@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment files (secrets: DB credentials, JWT secret)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# Database dumps / backups — JANGAN pernah commit dump database asli
+*.sql.gz
+*_dump.sql
+it_asset_inventory*.sql
+!backend/schema.sql
+!backend/seed.sql
+!backend/migrations/*.sql
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Uploaded files (kalau ada folder upload lokal)
+uploads/

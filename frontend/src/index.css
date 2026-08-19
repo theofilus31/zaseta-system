@@ -1,0 +1,197 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   BASE — dasar tipografi & kanvas
+   ========================================================================== */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-700 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Judul selalu sedikit lebih rapat & gelap — memberi bobot "produk jadi" */
+  h1, h2, h3, h4 {
+    @apply text-ink-800 tracking-tight;
+  }
+
+  /* Angka selalu rata lebarnya, supaya kolom nominal & KPI tidak "bergoyang" */
+  th, td, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Satu gaya fokus untuk seluruh aplikasi — aksesibilitas keyboard konsisten */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50 ring-offset-2 ring-offset-white;
+  }
+
+  /* Checkbox & radio ikut warna brand tanpa perlu plugin forms */
+  input[type='checkbox'],
+  input[type='radio'] {
+    @apply h-4 w-4 rounded border-ink-300 text-brand-500 cursor-pointer transition-colors;
+  }
+  input[type='radio'] { @apply rounded-full; }
+
+  ::placeholder { @apply text-ink-400; }
+}
+
+/* ==========================================================================
+   COMPONENTS — resep yang dipakai berulang di banyak halaman.
+   Ditulis di sini (bukan disalin sebagai deretan class di tiap file) supaya
+   mengganti gaya input/tabel cukup dilakukan di satu tempat.
+   ========================================================================== */
+@layer components {
+
+  /* ---------- Kontrol form ---------- */
+  .label {
+    @apply block text-sm font-medium text-ink-600 mb-1.5;
+  }
+
+  .hint {
+    @apply text-xs text-ink-400 mt-1.5 leading-relaxed;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-ink-200 bg-white text-ink-800 text-sm
+           px-3.5 py-2.5 shadow-sm
+           transition-[border-color,box-shadow,background-color] duration-150
+           hover:border-ink-300
+           focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10
+           disabled:bg-ink-100 disabled:text-ink-400 disabled:cursor-not-allowed disabled:hover:border-ink-200;
+  }
+
+  /* Varian select: sisakan ruang untuk panah kustom di kanan */
+  .field-select {
+    @apply field appearance-none bg-no-repeat pr-10 cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-size: 1rem 1rem;
+  }
+
+  /* Varian "tenggelam" — dipakai di baris filter agar tidak bersaing
+     dengan kartu putih di bawahnya */
+  .field-sunken {
+    @apply bg-ink-50 border-ink-200/80 shadow-none focus:bg-white;
+  }
+
+  .field-error {
+    @apply border-danger-300 focus:border-danger-500 focus:ring-danger-500/10;
+  }
+
+  /* ---------- Tabel ---------- */
+  .table-base {
+    @apply w-full text-sm border-separate border-spacing-0;
+  }
+
+  .table-base thead th {
+    @apply bg-ink-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-500
+           px-4 py-3 border-b border-ink-200/70 whitespace-nowrap;
+  }
+
+  .table-base tbody td {
+    @apply px-4 py-3.5 border-b border-ink-100 align-middle;
+  }
+
+  .table-base tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .table-base tbody tr {
+    @apply transition-colors duration-150;
+  }
+
+  .table-base tbody tr:hover {
+    @apply bg-ink-50/70;
+  }
+
+  /* Baris terpilih — dipakai di daftar aset & cetak massal */
+  .table-base tbody tr.is-selected {
+    @apply bg-brand-50/60 hover:bg-brand-50;
+  }
+
+  /* ---------- Lain-lain ---------- */
+
+  /* Kartu KPI: sedikit terangkat saat di-hover */
+  .stat-card {
+    @apply transition-[transform,box-shadow] duration-200;
+  }
+  .stat-card:hover {
+    @apply -translate-y-1 shadow-card-hover;
+  }
+
+  /* Progress bar tipis, dipakai di KPI & rekap kategori */
+  .progress-track {
+    @apply h-1.5 w-full rounded-full bg-ink-100 overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full transition-[width] duration-500 ease-out;
+  }
+
+  /* Dokumen dikunci selama kerangka aplikasi terpasang.
+
+     Kerangka aplikasi berukuran tepat setinggi layar dan sudah punya area
+     gulung sendiri (<main>). Kalau dokumen tetap boleh bergulung, sekecil
+     apa pun kelebihan tingginya akan membuat SELURUH kerangka — sidebar dan
+     semua — ikut bergeser saat gulungan di dalam mentok di ujung.
+
+     Kelas ini dipasang/dilepas oleh components/Layout.jsx, jadi halaman yang
+     TIDAK memakai kerangka (Masuk, Pindai QR publik) tetap bisa digulung
+     normal seperti halaman biasa. */
+  html.app-shell-locked,
+  html.app-shell-locked body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* Grid latar bertitik — dipakai di halaman Masuk & Pindai QR */
+  .dot-grid {
+    background-image: radial-gradient(circle, rgb(148 163 184 / 0.28) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+/* ==========================================================================
+   UTILITIES
+   ========================================================================== */
+@layer utilities {
+  /* Scrollbar ramping senada brand — hanya untuk WebKit/Chromium & Firefox */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.ink.300') transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background: theme('colors.ink.300');
+    border-radius: 9999px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.ink.400');
+  }
+}
+
+/* Scrollbar global mengikuti gaya yang sama */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(203 213 225);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184); }
+
+/* ==========================================================================
+   CETAK — sembunyikan seluruh kerangka aplikasi, sisakan area label saja.
+   Aturan ini dulunya ditulis inline di QRPrintPage; dipindah ke sini supaya
+   halaman cetak satuan & massal memakai perilaku yang sama.
+   ========================================================================== */
+@media print {
+  body { background: #fff; }
+  .print-hide { display: none !important; }
+}

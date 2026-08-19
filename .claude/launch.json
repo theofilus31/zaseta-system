@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "asset-inventory-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "D:\00 - PROJECT\Xampp\htdocs\it-asset-inventory\frontend",
+      "port": 5173
+    }
+  ]
+}
