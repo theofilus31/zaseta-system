@@ -9,7 +9,7 @@ import Card, { CardHeader } from '../components/ui/Card.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
-import GrowthChart from '../components/ui/GrowthChart.jsx';
+import RevenueChart from '../components/ui/sc-revenue-chart.tsx';
 
 /**
  * ============================================================================
@@ -115,15 +115,16 @@ export default function PlatformRevenue() {
               selalu ikut proporsi lebar), tapi hasilnya banyak ruang kosong
               di sampingnya. Sekarang lebarnya otomatis wajar karena ditaruh
               satu kolom grid, dan ruang di sampingnya terisi konten sungguhan
-              alih-alih kosong. */}
+              alih-alih kosong.
+
+              Dipakai RevenueChart (recharts/shadcn, lihat sc-revenue-chart.tsx)
+              di sini, BUKAN GrowthChart.jsx — GrowthChart.jsx tetap dipakai apa
+              adanya di PlatformDashboard.jsx untuk pertumbuhan pengguna/tenant. */}
           <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-4 mb-5">
-            <GrowthChart
-              title="Pertumbuhan Pendapatan"
-              subtitle={`Kumulatif dari invoice lunas, ${range} hari terakhir`}
+            <RevenueChart
               data={data.revenueGrowth}
-              color="#2f9c4f"
-              tintClass="bg-brand-50 text-brand-600"
-              unitLabel="Rupiah"
+              totalRevenue={data.revenueAllTime}
+              rangeLabel={`${range} hari terakhir`}
             />
 
             <Card>
