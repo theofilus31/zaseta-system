@@ -108,15 +108,15 @@ export default function PlatformRevenue() {
             />
           </div>
 
-          {/* max-w-2xl -- GrowthChart pakai viewBox tetap (500x210) + w-full
-              h-auto, jadi tingginya SELALU ikut proporsi lebar wadahnya.
-              Di Dashboard komponen ini selalu ditaruh berdampingan (grid 2
-              kolom, lihat PlatformDashboard.jsx) sehingga lebarnya wajar;
-              di sini cuma satu chart sendirian — dibiarkan tanpa batas lebar
-              bikin tingginya ikut membengkak sampai proporsinya aneh di
-              layar lebar. Lebarnya disamakan kira-kira dengan lebar satu
-              kolom di Dashboard supaya tinggi grafiknya konsisten juga. */}
-          <div className="mb-5 max-w-2xl">
+          {/* Chart + Distribusi Paket berdampingan (rasio 1.7fr/1fr, sama
+              persis pola PlatformDashboard.jsx) — sebelumnya chart ini
+              sendirian di barisnya, dibatasi max-w supaya tingginya tidak
+              membengkak (lihat GrowthChart.jsx: viewBox tetap, jadi tinggi
+              selalu ikut proporsi lebar), tapi hasilnya banyak ruang kosong
+              di sampingnya. Sekarang lebarnya otomatis wajar karena ditaruh
+              satu kolom grid, dan ruang di sampingnya terisi konten sungguhan
+              alih-alih kosong. */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-4 mb-5">
             <GrowthChart
               title="Pertumbuhan Pendapatan"
               subtitle={`Kumulatif dari invoice lunas, ${range} hari terakhir`}
@@ -125,35 +125,6 @@ export default function PlatformRevenue() {
               tintClass="bg-brand-50 text-brand-600"
               unitLabel="Rupiah"
             />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4">
-            <Card>
-              <CardHeader title="Konversi Terbaru" description="Enam pengajuan upgrade terakhir yang sudah diputuskan." />
-              {data.recentConversions.length === 0 && (
-                <p className="text-sm text-ink-400 text-center py-6">Belum ada permintaan upgrade yang diputuskan.</p>
-              )}
-              <div className="divide-y divide-ink-100">
-                {data.recentConversions.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-ink-800 truncate">{c.tenantName}</p>
-                      <p className="text-[11.5px] text-ink-400 truncate">
-                        {c.previousPlan || '—'} <i className="fas fa-arrow-right mx-1 text-[9px]" aria-hidden="true" /> {c.requestedPlan}
-                      </p>
-                    </div>
-                    <Badge tone={STATUS_TONE[c.status]} size="sm" className="shrink-0">{STATUS_LABEL[c.status]}</Badge>
-                  </div>
-                ))}
-              </div>
-              <Link
-                to="/platform/billing-requests"
-                className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 hover:text-brand-700"
-              >
-                Lihat semua riwayat permintaan
-                <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
-              </Link>
-            </Card>
 
             <Card>
               <CardHeader title="Distribusi Paket" description="Jumlah tenant dan perkiraan MRR per paket berbayar." />
@@ -175,6 +146,33 @@ export default function PlatformRevenue() {
               </div>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader title="Konversi Terbaru" description="Enam pengajuan upgrade terakhir yang sudah diputuskan." />
+            {data.recentConversions.length === 0 && (
+              <p className="text-sm text-ink-400 text-center py-6">Belum ada permintaan upgrade yang diputuskan.</p>
+            )}
+            <div className="divide-y divide-ink-100">
+              {data.recentConversions.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-ink-800 truncate">{c.tenantName}</p>
+                    <p className="text-[11.5px] text-ink-400 truncate">
+                      {c.previousPlan || '—'} <i className="fas fa-arrow-right mx-1 text-[9px]" aria-hidden="true" /> {c.requestedPlan}
+                    </p>
+                  </div>
+                  <Badge tone={STATUS_TONE[c.status]} size="sm" className="shrink-0">{STATUS_LABEL[c.status]}</Badge>
+                </div>
+              ))}
+            </div>
+            <Link
+              to="/platform/billing-requests"
+              className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 hover:text-brand-700"
+            >
+              Lihat semua riwayat permintaan
+              <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+            </Link>
+          </Card>
         </>
       )}
     </PlatformLayout>

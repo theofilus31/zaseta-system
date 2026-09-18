@@ -31,7 +31,7 @@ export const ACTION_HINT = {
 
 export const MODULES = [
   {
-    key: 'dashboard', label: 'Dasbor', path: '/dashboard', icon: 'fa-chart-pie',
+    key: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: 'fa-chart-pie',
     group: 'Aset', actions: ['view'],
     description: 'Ringkasan aset, nilai, dan hal yang perlu perhatian.',
   },
