@@ -7,9 +7,10 @@ import { PRODUCT_NAME } from '../constants/brand.js';
  *  SYARAT & KETENTUAN — PUBLIK
  * ============================================================================
  *  TEMPLATE AWAL, BUKAN NASKAH HUKUM JADI — lihat catatan yang sama di
- *  PrivacyPolicyPage.jsx. Bagian [DALAM KURUNG SIKU] wajib diisi, dan
- *  naskah ini sebaiknya ditinjau penasihat hukum sebelum mengikat pelanggan
- *  berbayar sungguhan.
+ *  PrivacyPolicyPage.jsx. Entitas & kontak sudah diisi (ZASETA, belum
+ *  berbadan hukum resmi -- ganti begitu ada badan usaha terdaftar), tapi
+ *  naskah ini sebaiknya tetap ditinjau penasihat hukum sebelum mengikat
+ *  pelanggan berbayar sungguhan.
  * ============================================================================
  */
 
@@ -30,7 +31,7 @@ export default function TermsOfServicePage() {
       <section className="mx-auto max-w-3xl px-4 sm:px-6 py-12 sm:py-16">
         <p className="text-[12px] font-bold uppercase tracking-wider text-brand-700 mb-2">Legal</p>
         <h1 className="text-[28px] sm:text-[32px] font-black tracking-tight text-ink-900 mb-2">Syarat &amp; Ketentuan</h1>
-        <p className="text-sm text-ink-400 mb-10">Terakhir diperbarui: [ISI TANGGAL TERBIT]</p>
+        <p className="text-sm text-ink-400 mb-10">Terakhir diperbarui: 18 September 2026</p>
 
         <Section title="1. Penerimaan Syarat">
           <p>
@@ -110,7 +111,11 @@ export default function TermsOfServicePage() {
         <Section title="11. Kontak">
           <p>
             Pertanyaan seputar Syarat & Ketentuan ini dapat disampaikan lewat formulir Hubungi Kami di
-            beranda, atau ke [ISI ALAMAT EMAIL RESMI] atas nama [ISI NAMA ENTITAS/PERUSAHAAN RESMI].
+            beranda, atau ke{' '}
+            <a href="mailto:zaseta.support@gmail.com" className="font-medium text-brand-600 hover:text-brand-700 underline underline-offset-2">
+              zaseta.support@gmail.com
+            </a>{' '}
+            atas nama {PRODUCT_NAME}.
           </p>
         </Section>
       </section>

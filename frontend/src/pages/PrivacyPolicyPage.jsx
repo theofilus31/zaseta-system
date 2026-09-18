@@ -8,9 +8,10 @@ import { PRODUCT_NAME } from '../constants/brand.js';
  * ============================================================================
  *  TEMPLATE AWAL, BUKAN NASKAH HUKUM JADI. Ditulis berdasarkan data yang
  *  BENAR-BENAR diproses sistem ini per audit kode (lihat komentar per bagian
- *  di bawah untuk sumbernya), tapi bagian [DALAM KURUNG SIKU] wajib diisi
- *  entitas/kontak sungguhan, dan keseluruhan naskah SEBAIKNYA ditinjau
- *  penasihat hukum sebelum dipakai mengikat pengguna berbayar sungguhan.
+ *  di bawah untuk sumbernya). Entitas & kontak sudah diisi (ZASETA, belum
+ *  berbadan hukum resmi -- ganti begitu ada badan usaha terdaftar), tapi
+ *  keseluruhan naskah SEBAIKNYA tetap ditinjau penasihat hukum sebelum
+ *  dipakai mengikat pengguna berbayar sungguhan.
  * ============================================================================
  */
 
@@ -31,7 +32,7 @@ export default function PrivacyPolicyPage() {
       <section className="mx-auto max-w-3xl px-4 sm:px-6 py-12 sm:py-16">
         <p className="text-[12px] font-bold uppercase tracking-wider text-brand-700 mb-2">Legal</p>
         <h1 className="text-[28px] sm:text-[32px] font-black tracking-tight text-ink-900 mb-2">Kebijakan Privasi</h1>
-        <p className="text-sm text-ink-400 mb-10">Terakhir diperbarui: [ISI TANGGAL TERBIT]</p>
+        <p className="text-sm text-ink-400 mb-10">Terakhir diperbarui: 18 September 2026</p>
 
         <Section title="1. Ringkasan">
           <p>
@@ -115,8 +116,11 @@ export default function PrivacyPolicyPage() {
 
         <Section title="10. Kontak">
           <p>
-            Pertanyaan seputar privasi dapat disampaikan lewat formulir Hubungi Kami di beranda, atau ke
-            [ISI ALAMAT EMAIL RESMI] atas nama [ISI NAMA ENTITAS/PERUSAHAAN RESMI].
+            Pertanyaan seputar privasi dapat disampaikan lewat formulir Hubungi Kami di beranda, atau ke{' '}
+            <a href="mailto:zaseta.support@gmail.com" className="font-medium text-brand-600 hover:text-brand-700 underline underline-offset-2">
+              zaseta.support@gmail.com
+            </a>{' '}
+            atas nama {PRODUCT_NAME}.
           </p>
         </Section>
       </section>
