@@ -204,10 +204,15 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
   const [locations, setLocations] = useState([]);
   const [assetTypes, setAssetTypes] = useState([]);
   const [showNewAssetType, setShowNewAssetType] = useState(false);
+  /* Satuan tidak lagi diisi manual -- hampir semua barang habis pakai
+     dihitung per pcs, jadi dipakaikan begitu saja sebagai baku. Kalau
+     nanti ternyata perlu ada satuan lain, field-nya cukup dikembalikan
+     lagi di sini, bukan berarti backend perlu diubah (unit tetap kolom
+     bebas teks di consumableController.js). */
+  const DEFAULT_UNIT = 'pcs';
   const [form, setForm] = useState({
     name: item?.name || '',
     assetTypeId: item?.assetTypeId || '',
-    unit: item?.unit || 'pcs',
     minStock: item?.minStock ?? 0,
     locationId: item?.locationId || '',
     notes: item?.notes || '',
@@ -232,7 +237,7 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
 
     setSaving(true);
     try {
-      const payload = { ...form, locationId: form.locationId || null };
+      const payload = { ...form, unit: item?.unit || DEFAULT_UNIT, locationId: form.locationId || null };
       const res = item
         ? await axiosClient.put(`/consumables/${item.id}`, payload)
         : await axiosClient.post('/consumables', payload);
@@ -265,19 +270,12 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
           placeholder="Mis. Kertas HVS A4 80gsm"
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SearchableSelect
-            label="Kategori" value={form.assetTypeId} onChange={(v) => setForm((f) => ({ ...f, assetTypeId: v }))}
-            options={assetTypes}
-            placeholder="Cari kategori…" emptyLabel="Belum ditentukan"
-            labelAction={<CreateNewButton onClick={() => setShowNewAssetType(true)} />}
-          />
-          <TextField
-            label="Satuan" name="unit" required
-            value={form.unit} onChange={change}
-            placeholder="pcs, box, rim, liter"
-          />
-        </div>
+        <SearchableSelect
+          label="Kategori" value={form.assetTypeId} onChange={(v) => setForm((f) => ({ ...f, assetTypeId: v }))}
+          options={assetTypes}
+          placeholder="Cari kategori…" emptyLabel="Belum ditentukan"
+          labelAction={<CreateNewButton onClick={() => setShowNewAssetType(true)} />}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <TextField

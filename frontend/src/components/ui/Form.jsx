@@ -126,11 +126,18 @@ export function SearchableSelect({
 
   /* Saat panel ditutup, kotak menampilkan nama pilihan yang aktif — bukan
      bekas ketikan pencarian. Sinkron di sini, bukan saat memilih, supaya
-     tetap benar kalau `value` berubah dari luar (mis. form direset). */
+     tetap benar kalau `value` berubah dari luar (mis. form direset).
+     `options` WAJIB ikut jadi dependency -- form Ubah sering mengisi
+     `value` SEBELUM daftar opsinya sendiri selesai dimuat (mis. kategori/
+     lokasi yang di-fetch async begitu modal dibuka). Tanpanya, `selected`
+     baru ketemu belakangan tapi efek ini sudah kadung tidak dijalankan
+     ulang, jadi kotaknya kelihatan kosong padahal `value`-nya sebenarnya
+     sudah benar terisi (bug nyata yang sempat kejadian di Kategori/Lokasi
+     saat Ubah Barang Habis Pakai). */
   useEffect(() => {
     if (!open) setQuery(selected ? getOptionLabel(selected) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, value]);
+  }, [open, value, options]);
 
   useEffect(() => {
     function handleClickOutside(e) {
