@@ -43,7 +43,9 @@ export function ScanShell({ children }) {
   );
 }
 
-function Row({ label, value }) {
+/** Diekspor -- dipakai ulang oleh ConsumablePublicScanPage.jsx untuk panel
+    "Lihat detail lengkap", supaya gaya barisnya sama persis dengan aset. */
+export function Row({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2.5 border-b border-ink-100 last:border-0">
       <dt className="text-[13px] text-ink-400 shrink-0">{label}</dt>

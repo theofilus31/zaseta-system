@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Boxes } from 'lucide-react';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { ScanShell } from './PublicScanPage.jsx';
+import { ScanShell, Row } from './PublicScanPage.jsx';
+import AssetTrackerCard from '../components/ui/AssetTrackerCard.jsx';
 import ConsumableScanActionPanel from '../components/consumables/ConsumableScanActionPanel.jsx';
 
 /**
@@ -12,7 +14,35 @@ import ConsumableScanActionPanel from '../components/consumables/ConsumableScanA
  * migration_consumable_qr.sql). Pola dua-jalurnya SAMA: petugas yang sudah
  * masuk & berhak mendapat panel aksi (Stok Masuk/Keluar), selain itu cuma
  * tampilan ringkas read-only.
+ *
+ * Tampilan publiknya SENGAJA memakai AssetTrackerCard & Row yang SAMA PERSIS
+ * dipakai PublicScanPage.jsx (aset) -- bukan desain terpisah -- supaya kedua
+ * halaman pindai publik punya satu tema, bukan dua yang kebetulan mirip.
+ * Satu-satunya bagian yang beda: lencana atas menampilkan STOK (bukan status
+ * siklus hidup aset) karena itu yang paling ingin diketahui begitu memindai
+ * barang habis pakai.
  */
+
+const STOCK_TONE = {
+  ok: { badge: 'bg-brand-50 text-brand-700 ring-brand-500/20', dot: 'bg-brand-500' },
+  low: { badge: 'bg-warning-50 text-warning-700 ring-warning-500/25', dot: 'bg-warning-500' },
+  empty: { badge: 'bg-danger-50 text-danger-700 ring-danger-500/25', dot: 'bg-danger-600' },
+};
+
+/** Lencana stok — dibuat mengikuti kelas StatusBadge.jsx persis (pil + titik +
+    ring) supaya terasa satu keluarga dengan lencana status aset, meski
+    isinya beda (angka stok, bukan status siklus hidup). */
+function StockBadge({ item }) {
+  const key = item.currentStock <= 0 ? 'empty' : item.lowStock ? 'low' : 'ok';
+  const tone = STOCK_TONE[key];
+  return (
+    <span className={`inline-flex items-center rounded-full font-medium whitespace-nowrap ring-1 ring-inset text-[11px] px-2 py-0.5 gap-1.5 ${tone.badge}`}>
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${tone.dot}`} aria-hidden="true" />
+      {item.currentStock} {item.unit} tersisa
+    </span>
+  );
+}
+
 export default function ConsumablePublicScanPage() {
   const { code } = useParams();
   const { user, can } = useAuth();
@@ -20,6 +50,7 @@ export default function ConsumablePublicScanPage() {
   const [item, setItem] = useState(null);      // tampilan publik
   const [staffItem, setStaffItem] = useState(null); // tampilan petugas
   const [error, setError] = useState('');
+  const [showDetail, setShowDetail] = useState(false);
 
   const muat = useCallback(async () => {
     setError('');
@@ -83,42 +114,30 @@ export default function ConsumablePublicScanPage() {
   /* ---------- Berhasil (publik, read-only) ---------- */
   return (
     <ScanShell>
-      <div className="bg-white rounded-2xl border border-ink-200 shadow-raised overflow-hidden">
-        <div className="px-6 py-6 text-center border-b border-ink-100">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
-            <i className="fas fa-boxes-stacked text-lg" aria-hidden="true" />
+      <div className="space-y-4">
+        <AssetTrackerCard
+          topBadge={<StockBadge item={item} />}
+          assetName={item.name}
+          assetCode={item.code}
+          codeLabel="Kode Barang"
+          location={item.locationName}
+          qrValue={typeof window !== 'undefined' ? window.location.href : item.code}
+          icon={<Boxes className="h-7 w-7" aria-hidden="true" />}
+          expanded={showDetail}
+          onToggleDetail={() => setShowDetail((v) => !v)}
+        />
+
+        {showDetail && (
+          <div className="bg-white rounded-2xl border border-ink-200 shadow-raised overflow-hidden animate-slide-down">
+            <div className="px-6 py-5">
+              <dl>
+                <Row label="Kategori" value={item.assetTypeName} />
+                <Row label="Lokasi" value={item.locationName} />
+                <Row label="Ambang Stok Minimum" value={`${item.minStock} ${item.unit}`} />
+              </dl>
+            </div>
           </div>
-          <p className="text-base font-bold text-ink-900">{item.name}</p>
-          <p className="text-[13px] font-mono text-ink-400 mt-1">{item.code}</p>
-        </div>
-
-        <div className="px-6 py-5 border-b border-ink-100 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Stok Saat Ini</p>
-          <p className={`mt-1 text-3xl font-bold tabular-nums ${item.lowStock ? 'text-danger-600' : 'text-ink-900'}`}>
-            {item.currentStock} <span className="text-sm font-medium text-ink-400">{item.unit}</span>
-          </p>
-          {item.lowStock && (
-            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-danger-50 px-3 py-1 text-xs font-medium text-danger-700">
-              <i className="fas fa-triangle-exclamation text-[10px]" aria-hidden="true" />
-              {item.currentStock <= 0 ? 'Stok habis' : `Di bawah ambang (${item.minStock})`}
-            </p>
-          )}
-        </div>
-
-        <dl className="px-6 py-5 space-y-2.5 text-[13px]">
-          {item.assetTypeName && (
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-400">Kategori</dt>
-              <dd className="font-medium text-ink-800">{item.assetTypeName}</dd>
-            </div>
-          )}
-          {item.locationName && (
-            <div className="flex justify-between gap-3">
-              <dt className="text-ink-400">Lokasi</dt>
-              <dd className="font-medium text-ink-800 text-right">{item.locationName}</dd>
-            </div>
-          )}
-        </dl>
+        )}
       </div>
     </ScanShell>
   );

@@ -7,14 +7,24 @@ import StatusBadge from './StatusBadge.jsx';
 
 /**
  * Kartu ringkas untuk halaman pindai publik (PublicScanPage) — tampilan
- * pertama yang dilihat orang setelah memindai label QR aset, sebelum
- * membuka rincian penuh. Diadaptasi dari pola "package tracker card":
- * status di atas, identitas aset di tengah, kode + QR di bawah.
+ * pertama yang dilihat orang setelah memindai label QR, sebelum membuka
+ * rincian penuh. Diadaptasi dari pola "package tracker card": lencana di
+ * atas, identitas di tengah, kode + QR di bawah.
+ *
+ * Dipakai bersama oleh pindaian ASET (PublicScanPage.jsx, `status` -> lencana
+ * StatusBadge, "Kode Aset") dan BARANG HABIS PAKAI (ConsumablePublicScanPage.jsx,
+ * `topBadge` custom -> lencana stok, `codeLabel="Kode Barang"`) -- supaya
+ * kedua halaman pindai publik punya tema yang SAMA PERSIS, bukan dua desain
+ * terpisah yang kebetulan mirip. `status` tetap dipertahankan apa adanya
+ * (bukan diganti wajib jadi `topBadge`) supaya pemanggilan yang sudah ada
+ * untuk aset tidak perlu ikut diubah.
  */
 export default function AssetTrackerCard({
   status,
+  topBadge,
   assetName,
   assetCode,
+  codeLabel = 'Kode Aset',
   location,
   date,
   qrValue,
@@ -63,7 +73,7 @@ export default function AssetTrackerCard({
 
       <div className="px-5 py-5">
         <motion.div variants={itemVariants} className="flex items-center justify-between gap-3">
-          <StatusBadge status={status} size="sm" />
+          {topBadge || <StatusBadge status={status} size="sm" />}
           {location && <span className="text-[11px] text-ink-400 text-right truncate">{location}</span>}
         </motion.div>
 
@@ -73,7 +83,7 @@ export default function AssetTrackerCard({
 
         <div className="mt-5 flex items-end justify-between gap-4">
           <motion.div variants={itemVariants} className="min-w-0 space-y-1">
-            <p className="text-[11px] text-ink-400">Kode Aset</p>
+            <p className="text-[11px] text-ink-400">{codeLabel}</p>
             <p className="font-mono text-sm text-ink-800 truncate">{assetCode}</p>
             {date && <p className="text-[11px] text-ink-400">{date}</p>}
           </motion.div>
