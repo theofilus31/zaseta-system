@@ -7,15 +7,15 @@ import { TrendingDown, TrendingUp } from 'lucide-react';
 import { CartesianGrid, ComposedChart, Line, XAxis, YAxis } from 'recharts';
 
 /**
- * Chart pendapatan gaya "Current Balance" (lihat sc-line-charts-9-demo.tsx,
- * pratinjau statis masih ada di /dev/chart-demo) -- versi ini disambungkan ke
- * `revenueGrowth`/`revenueAllTime` SUNGGUHAN dari GET /api/platform/revenue
- * (lihat PlatformRevenue.jsx), bukan data contoh.
- *
- * Dipasang KHUSUS untuk data uang, berdampingan dengan GrowthChart.jsx yang
- * sudah ada -- GrowthChart.jsx tidak disentuh sama sekali dan tetap dipakai
- * apa adanya di PlatformDashboard.jsx (pertumbuhan pengguna/tenant, bukan
- * data uang).
+ * Chart tren kumulatif gaya "Current Balance" (lihat sc-line-charts-9-demo.tsx,
+ * pratinjau statis masih ada di /dev/chart-demo) -- versi generik yang dipakai
+ * ulang untuk SEMUA grafik pertumbuhan di dashboard (admin platform maupun
+ * tenant), menggantikan GrowthChart.jsx (SVG buatan sendiri) sepenuhnya.
+ * Dipakai oleh PlatformRevenue.jsx (pendapatan, format Rupiah) dan
+ * PlatformDashboard.jsx (pertumbuhan pengguna/tenant, format angka biasa) --
+ * format nilai (Rupiah vs angka polos) diserahkan ke pemanggil lewat
+ * `formatFull`/`formatAxis`, supaya komponen ini sendiri tidak perlu tahu
+ * jenis satuannya.
  *
  * Beberapa elemen dekoratif di demo asli dibuang karena tidak punya makna
  * dengan data sungguhan: ReferenceLine di tanggal tertentu ("Jan 17") dan
@@ -35,67 +35,50 @@ function formatDateFull(isoDate: string) {
   return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function formatRupiahCompact(v: number) {
-  const sign = v < 0 ? '-' : '';
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '')} M`;
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')} jt`;
-  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)} rb`;
-  return `${sign}${abs}`;
-}
+// ink-400 (lihat tailwind.config.js) -- sama seperti warna label sumbu di GrowthChart.jsx
+const AXIS_COLOR = '#94a3b8';
 
-function formatRupiahFull(v: number) {
-  return `Rp ${Math.round(v).toLocaleString('id-ID')}`;
-}
-
-/* Warna diambil dari 3 warna utama sistem ini (lihat komentar di puncak
-   tailwind.config.js: hijau/biru/kuning diturunkan dari logo RMS), BUKAN
-   dari nilai hex shadcn/demo asli -- supaya chart ini menyatu dengan tema,
-   bukan terlihat seperti komponen tempelan. Sumbu & garis netral pakai
-   ink-400 (sama seperti GrowthChart.jsx), garis data pakai brand (hijau,
-   sama seperti warna "Pertumbuhan Pendapatan" versi GrowthChart yang
-   digantikan komponen ini), titik tertinggi pakai info (biru), titik
-   terendah pakai warning (emas). */
-const AXIS_COLOR = '#94a3b8'; // ink-400
-const LINE_COLOR = '#2f9c4f'; // brand-500
-
-const chartConfig = {
-  value: {
-    label: 'Pendapatan',
-    color: LINE_COLOR,
-  },
-} satisfies ChartConfig;
-
-interface RevenuePoint {
+interface DataPoint {
   date: string;
   value: number;
 }
 
-interface RevenueChartProps {
-  data: RevenuePoint[];
-  totalRevenue: number;
+interface LineChartCardProps {
+  data: DataPoint[];
+  /** Judul kecil di atas angka besar, mis. "Pendapatan Terkumpul" / "Pengguna Sudah Login". */
+  headerLabel: string;
+  /** Angka besar di header -- biasanya total/terkini, BUKAN cuma nilai terakhir di rentang chart (lihat totalRevenue di PlatformRevenue.jsx). */
+  headerValue: number;
   rangeLabel: string;
+  /** Warna garis & dot -- ambil dari salah satu dari 3 warna utama sistem ini (brand/info/warning, lihat tailwind.config.js), bukan warna lepas. */
+  color: string;
+  /** Format lengkap: header besar, tooltip, "Bertambah periode ini". */
+  formatFull: (v: number) => string;
+  /** Format ringkas: sumbu-Y & Tertinggi/Terendah -- boleh sertakan prefix/suffix satuan sendiri (mis. "Rp 1,2 jt"). */
+  formatAxis: (v: number) => string;
 }
 
 interface TooltipProps {
   active?: boolean;
-  payload?: Array<{ payload: { date: string; value: number } }>;
+  payload?: Array<{ payload: DataPoint }>;
 }
 
-const CustomTooltip = ({ active, payload }: TooltipProps) => {
-  if (active && payload && payload.length) {
-    const point = payload[0].payload;
-    return (
-      <div className="bg-sc-popover border border-sc-border rounded-lg p-3 shadow-lg">
-        <div className="text-sm text-sc-muted-foreground mb-1">{formatDateFull(point.date)}</div>
-        <div className="text-base font-bold">{formatRupiahFull(point.value)}</div>
-      </div>
-    );
-  }
-  return null;
-};
+function makeTooltip(formatFull: (v: number) => string) {
+  return function ChartCustomTooltip({ active, payload }: TooltipProps) {
+    if (active && payload && payload.length) {
+      const point = payload[0].payload;
+      return (
+        <div className="bg-sc-popover border border-sc-border rounded-lg p-3 shadow-lg">
+          <div className="text-sm text-sc-muted-foreground mb-1">{formatDateFull(point.date)}</div>
+          <div className="text-base font-bold">{formatFull(point.value)}</div>
+        </div>
+      );
+    }
+    return null;
+  };
+}
 
-export default function RevenueChart({ data, totalRevenue, rangeLabel }: RevenueChartProps) {
+export default function LineChartCard({ data, headerLabel, headerValue, rangeLabel, color, formatFull, formatAxis }: LineChartCardProps) {
   const points = (data || []).map((d) => ({ date: d.date, value: Number(d.value) || 0 }));
   const first = points[0]?.value ?? 0;
   const last = points[points.length - 1]?.value ?? 0;
@@ -110,13 +93,16 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
 
   if (points.length === 0) return null;
 
+  const chartConfig = { value: { label: headerLabel, color } } satisfies ChartConfig;
+  const CustomTooltip = makeTooltip(formatFull);
+
   return (
     <Card className="w-full">
       <CardContent className="flex flex-col items-stretch gap-5">
         <div>
-          <h3 className="text-base text-sc-muted-foreground font-medium mb-1">Pendapatan Terkumpul</h3>
+          <h3 className="text-base text-sc-muted-foreground font-medium mb-1">{headerLabel}</h3>
           <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-3.5">
-            <span className="text-4xl font-bold">{formatRupiahFull(totalRevenue)}</span>
+            <span className="text-4xl font-bold">{formatFull(headerValue)}</span>
             <div className={`flex items-center gap-1 ${isUp ? 'text-brand-600' : 'text-danger-600'}`}>
               {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
               <span className="font-medium">
@@ -132,14 +118,14 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
           <div className="flex items-center justify-between flex-wrap gap-2.5 text-sm mb-2.5">
             <div className="flex items-center gap-2">
               <span className="text-sc-muted-foreground">Bertambah periode ini:</span>
-              <span className="font-semibold">{formatRupiahFull(periodGain)}</span>
+              <span className="font-semibold">{formatFull(periodGain)}</span>
             </div>
             <div className="flex items-center gap-6 text-sc-muted-foreground">
               <span>
-                Tertinggi: <span className="text-info-600 font-medium">Rp {formatRupiahCompact(highValue)}</span>
+                Tertinggi: <span className="text-info-600 font-medium">{formatAxis(highValue)}</span>
               </span>
               <span>
-                Terendah: <span className="text-warning-600 font-medium">Rp {formatRupiahCompact(lowValue)}</span>
+                Terendah: <span className="text-warning-600 font-medium">{formatAxis(lowValue)}</span>
               </span>
             </div>
           </div>
@@ -150,15 +136,15 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
           >
             <ComposedChart data={points} margin={{ top: 20, right: 10, left: 5, bottom: 20 }}>
               <defs>
-                <pattern id="revenueDotGrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                <pattern id="lineChartDotGrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
                   <circle cx="10" cy="10" r="1" fill="var(--sc-input)" fillOpacity="0.3" />
                 </pattern>
-                <filter id="revenueDotShadow" x="-50%" y="-50%" width="200%" height="200%">
+                <filter id="lineChartDotShadow" x="-50%" y="-50%" width="200%" height="200%">
                   <feDropShadow dx="2" dy="3" stdDeviation="3" floodColor="rgba(0,0,0,0.8)" />
                 </filter>
               </defs>
 
-              <rect x="0" y="0" width="100%" height="100%" fill="url(#revenueDotGrid)" style={{ pointerEvents: 'none' }} />
+              <rect x="0" y="0" width="100%" height="100%" fill="url(#lineChartDotGrid)" style={{ pointerEvents: 'none' }} />
 
               <CartesianGrid strokeDasharray="4 8" stroke="var(--sc-input)" strokeOpacity={1} horizontal vertical={false} />
 
@@ -177,17 +163,15 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12, fill: AXIS_COLOR }}
-                tickFormatter={(value) => `Rp ${formatRupiahCompact(value)}`}
+                tickFormatter={formatAxis}
                 tickMargin={10}
                 width={72}
-                /* Belum ada pendapatan sama sekali (tenant baru/DB baru direset)
-                   -- domain [0,0] default recharts membuatnya menghasilkan
-                   tick 0/3/6/10 yang, gara-gara diberi awalan "Rp" oleh
-                   tickFormatter, terlihat seperti pendapatan sungguhan
-                   Rp 3/Rp 6 (padahal cuma angka skala kosong, bukan Rupiah).
-                   Domain dipaksa [0,10] TAPI cuma satu tick (0) yang
-                   ditampilkan, supaya sumbu-Y kondisi kosong jujur menunjukkan
-                   "Rp 0" saja, bukan angka yang menyesatkan. */
+                /* Belum ada data sama sekali (tenant baru/DB baru direset) --
+                   domain [0,0] default recharts membuatnya menghasilkan tick
+                   0/3/6/10 yang terlihat seperti nilai sungguhan padahal cuma
+                   skala kosong tanpa arti. Domain dipaksa [0,10] TAPI cuma
+                   satu tick (0) yang ditampilkan, supaya sumbu-Y kondisi
+                   kosong jujur menunjukkan "0" saja. */
                 domain={isFlatZero ? [0, 10] : undefined}
                 ticks={isFlatZero ? [0] : undefined}
               />
@@ -200,9 +184,9 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke={chartConfig.value.color}
+                stroke={color}
                 strokeWidth={2}
-                dot={(props: { cx?: number; cy?: number; payload: RevenuePoint }) => {
+                dot={(props: { cx?: number; cy?: number; payload: DataPoint }) => {
                   const { cx, cy, payload } = props;
                   if (payload.date === firstDate || payload.date === lastDate) {
                     return (
@@ -211,16 +195,16 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
                         cx={cx}
                         cy={cy}
                         r={5}
-                        fill={chartConfig.value.color}
+                        fill={color}
                         stroke="white"
                         strokeWidth={2}
-                        filter="url(#revenueDotShadow)"
+                        filter="url(#lineChartDotShadow)"
                       />
                     );
                   }
                   return <g key={`dot-${payload.date}`} />;
                 }}
-                activeDot={{ r: 6, fill: chartConfig.value.color, stroke: 'white', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: color, stroke: 'white', strokeWidth: 2 }}
               />
             </ComposedChart>
           </ChartContainer>

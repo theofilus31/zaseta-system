@@ -7,7 +7,7 @@ import StatCard from '../components/ui/StatCard.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
-import GrowthChart from '../components/ui/GrowthChart.jsx';
+import LineChartCard from '../components/ui/sc-line-chart.tsx';
 import { ICON_STROKE, IconWallet, IconBuilding, IconPulse } from '../components/ui/icons.jsx';
 
 /**
@@ -153,21 +153,23 @@ export default function PlatformDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-            <GrowthChart
-              title="Pertumbuhan Pengguna"
-              subtitle={`Total pengguna yang pernah login, kumulatif ${range} hari terakhir`}
+            <LineChartCard
               data={stats.userGrowth}
+              headerLabel="Pengguna Sudah Login"
+              headerValue={stats.usersLoggedIn}
+              rangeLabel={`${range} hari terakhir`}
               color="#2f6fa8"
-              tintClass="bg-info-50 text-info-600"
-              unitLabel="pengguna"
+              formatFull={angka}
+              formatAxis={angka}
             />
-            <GrowthChart
-              title="Pertumbuhan Tenant Berlangganan"
-              subtitle={`Dari riwayat pengajuan upgrade yang disetujui, ${range} hari terakhir`}
+            <LineChartCard
               data={stats.subscriberGrowth}
+              headerLabel="Tenant Berlangganan"
+              headerValue={stats.tenantsSubscribed}
+              rangeLabel={`${range} hari terakhir`}
               color="#2f9c4f"
-              tintClass="bg-brand-50 text-brand-600"
-              unitLabel="tenant"
+              formatFull={angka}
+              formatAxis={angka}
             />
           </div>
 

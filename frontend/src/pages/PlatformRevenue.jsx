@@ -9,7 +9,7 @@ import Card, { CardHeader } from '../components/ui/Card.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
-import RevenueChart from '../components/ui/sc-revenue-chart.tsx';
+import LineChartCard from '../components/ui/sc-line-chart.tsx';
 import { ICON_STROKE, IconWallet, IconBuilding } from '../components/ui/icons.jsx';
 
 /**
@@ -30,7 +30,17 @@ import { ICON_STROKE, IconWallet, IconBuilding } from '../components/ui/icons.js
  */
 
 const angka = (v) => Number(v).toLocaleString('id-ID');
-const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
+const rupiah = (v) => `Rp ${Math.round(Number(v)).toLocaleString('id-ID')}`;
+
+/** Format ringkas untuk sumbu-Y & Tertinggi/Terendah di LineChartCard -- lihat catatan di sc-line-chart.tsx. */
+function rupiahRingkas(v) {
+  const sign = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `${sign}Rp ${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, '')} M`;
+  if (abs >= 1_000_000) return `${sign}Rp ${(abs / 1_000_000).toFixed(1).replace(/\.0$/, '')} jt`;
+  if (abs >= 1_000) return `${sign}Rp ${Math.round(abs / 1_000)} rb`;
+  return `${sign}Rp ${abs}`;
+}
 
 const IconCoins = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><circle cx="9" cy="9" r="6" /><path d="M14.5 9.5a6 6 0 1 0-6 6" /><circle cx="15" cy="15" r="6" /></svg>;
 const IconTrend = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>;
@@ -107,22 +117,21 @@ export default function PlatformRevenue() {
           </div>
 
           {/* Chart + Distribusi Paket berdampingan (rasio 1.7fr/1fr, sama
-              persis pola PlatformDashboard.jsx) — sebelumnya chart ini
-              sendirian di barisnya, dibatasi max-w supaya tingginya tidak
-              membengkak (lihat GrowthChart.jsx: viewBox tetap, jadi tinggi
-              selalu ikut proporsi lebar), tapi hasilnya banyak ruang kosong
-              di sampingnya. Sekarang lebarnya otomatis wajar karena ditaruh
-              satu kolom grid, dan ruang di sampingnya terisi konten sungguhan
-              alih-alih kosong.
+              persis pola PlatformDashboard.jsx) supaya lebarnya wajar dan
+              ruang di sampingnya terisi konten sungguhan, bukan kosong.
 
-              Dipakai RevenueChart (recharts/shadcn, lihat sc-revenue-chart.tsx)
-              di sini, BUKAN GrowthChart.jsx — GrowthChart.jsx tetap dipakai apa
-              adanya di PlatformDashboard.jsx untuk pertumbuhan pengguna/tenant. */}
+              Dipakai LineChartCard (recharts/shadcn, lihat sc-line-chart.tsx)
+              -- komponen generik yang sama dipakai juga oleh
+              PlatformDashboard.jsx untuk pertumbuhan pengguna/tenant. */}
           <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-4 mb-5">
-            <RevenueChart
+            <LineChartCard
               data={data.revenueGrowth}
-              totalRevenue={data.revenueAllTime}
+              headerLabel="Pendapatan Terkumpul"
+              headerValue={data.revenueAllTime}
               rangeLabel={`${range} hari terakhir`}
+              color="#2f9c4f"
+              formatFull={rupiah}
+              formatAxis={rupiahRingkas}
             />
 
             <Card>

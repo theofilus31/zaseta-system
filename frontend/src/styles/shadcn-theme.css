@@ -16,8 +16,9 @@
  *  bagian yang sama untuk pemetaannya ke Tailwind.
  *
  *  Palet "neutral" bawaan shadcn/ui, TIDAK disesuaikan dengan warna brand
- *  hijau proyek ini -- lihat catatan di GrowthChart.jsx/PlatformRevenue.jsx
- *  kalau suatu saat komponen chart lain ingin dipadankan temanya.
+ *  hijau proyek ini -- lihat catatan di sc-line-chart.tsx untuk bagaimana
+ *  komponen chart di sini dipadankan ke 3 warna utama sistem (brand/info/
+ *  warning) meski token warna dasarnya tetap netral shadcn.
  * ============================================================================
  */
 :root {
