@@ -49,6 +49,8 @@ export default function ConsumableDetail() {
   const [showOut, setShowOut] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [qr, setQr] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   const canEdit = can('consumables', 'edit');
   const canDelete = can('consumables', 'delete');
@@ -72,8 +74,37 @@ export default function ConsumableDetail() {
     }
   }, [id, page, pushError]);
 
+  /* Kode QR/barcode dibuat on-demand di backend (lihat consumableQrController.js)
+     -- barang yang sudah ada SEBELUM fitur ini belum tentu punya baris QR,
+     jadi dipanggil di sini (bukan sekadar dibaca dari GET /consumables/:id)
+     supaya pratinjau selalu ada begitu halaman ini dibuka, sama seperti kalau
+     tombol "Cetak Barcode" diklik. */
+  const muatQr = useCallback(async () => {
+    try {
+      const res = await axiosClient.get(`/consumables/${id}/qr/print`);
+      setQr(res.data);
+    } catch {
+      /* Kegagalan di sini tidak boleh mengganggu tampilan detail utamanya. */
+    }
+  }, [id]);
+
   useEffect(() => { muatItem(); }, [muatItem]);
   useEffect(() => { muatTransaksi(); }, [muatTransaksi]);
+  useEffect(() => { muatQr(); }, [muatQr]);
+
+  async function handleRegenerateQr() {
+    if (!confirm('Kode QR lama tidak akan berlaku lagi setelah ini. Lanjutkan?')) return;
+    setRegenerating(true);
+    try {
+      await axiosClient.post(`/consumables/${id}/qr/regenerate`);
+      await muatQr();
+      pushSuccess('Kode QR berhasil dibuat ulang. Label lama perlu dicetak ulang.');
+    } catch (err) {
+      pushError(err.response?.data?.message || 'Gagal membuat ulang Kode QR.');
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   function afterStockChange(message) {
     pushSuccess(message);
@@ -257,6 +288,35 @@ export default function ConsumableDetail() {
               )}
             </dl>
           </Card>
+
+          {qr && (
+            <Card className="text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-4">Kode QR Barang</p>
+
+              {qr.image_path ? (
+                <div className="inline-block rounded-2xl border border-ink-200 bg-white p-3 shadow-sm">
+                  <img src={qr.image_path} alt={`Kode QR untuk ${item.name}`} className="h-36 w-36" />
+                </div>
+              ) : (
+                <p className="text-xs text-danger-600 py-8">Gambar Kode QR tidak valid.</p>
+              )}
+
+              <p className="text-xs text-ink-400 mt-3.5">
+                Sudah dipindai <span className="font-semibold text-ink-600 tabular-nums">{qr.scan_count}</span> kali
+              </p>
+
+              <div className="flex flex-col gap-2 mt-4">
+                <Button to={`/consumables/${id}/qr`} variant="secondary" size="sm" block>
+                  <i className="fas fa-print text-xs" aria-hidden="true" /> Cetak Label
+                </Button>
+                {canEdit && (
+                  <Button variant="ghost" size="sm" block onClick={handleRegenerateQr} loading={regenerating}>
+                    {regenerating ? 'Membuat ulang…' : 'Buat Ulang Kode QR'}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

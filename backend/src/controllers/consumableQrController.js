@@ -34,11 +34,14 @@ const getConsumableQr = asyncHandler(async (req, res) => {
   if (!item) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
 
   const [qrRows] = await pool.query(
-    `SELECT code, scan_url, image_path FROM consumable_qr_codes WHERE consumable_id = :id`, { id }
+    `SELECT code, scan_url, image_path, scan_count FROM consumable_qr_codes WHERE consumable_id = :id`, { id }
   );
 
   if (qrRows[0]) {
-    return res.json({ code: qrRows[0].code, scan_url: qrRows[0].scan_url, image_path: qrRows[0].image_path, name: item.name, item_code: item.code });
+    return res.json({
+      code: qrRows[0].code, scan_url: qrRows[0].scan_url, image_path: qrRows[0].image_path,
+      scan_count: qrRows[0].scan_count, name: item.name, item_code: item.code,
+    });
   }
 
   // Belum ada baris QR untuk barang ini (dibuat sebelum fitur ini ada) — buat sekarang.
@@ -49,7 +52,7 @@ const getConsumableQr = asyncHandler(async (req, res) => {
   );
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'consumable_qr_code', entityId: id, newValues: { code } });
 
-  res.json({ code, scan_url: scanUrl, image_path: imageDataUrl, name: item.name, item_code: item.code });
+  res.json({ code, scan_url: scanUrl, image_path: imageDataUrl, scan_count: 0, name: item.name, item_code: item.code });
 });
 
 // POST /api/consumables/:id/qr/regenerate — buat ulang QR (mis. label lama rusak/hilang)
@@ -78,7 +81,7 @@ const regenerateConsumableQr = asyncHandler(async (req, res) => {
 
   await logAudit({ userId: req.user.id, action: 'update', entityType: 'consumable_qr_code', entityId: id, newValues: { code } });
 
-  res.json({ code, scan_url: scanUrl, image_path: imageDataUrl });
+  res.json({ code, scan_url: scanUrl, image_path: imageDataUrl, scan_count: 0 });
 });
 
 module.exports = { getConsumableQr, regenerateConsumableQr };
