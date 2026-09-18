@@ -48,10 +48,21 @@ function formatRupiahFull(v: number) {
   return `Rp ${Math.round(v).toLocaleString('id-ID')}`;
 }
 
+/* Warna diambil dari 3 warna utama sistem ini (lihat komentar di puncak
+   tailwind.config.js: hijau/biru/kuning diturunkan dari logo RMS), BUKAN
+   dari nilai hex shadcn/demo asli -- supaya chart ini menyatu dengan tema,
+   bukan terlihat seperti komponen tempelan. Sumbu & garis netral pakai
+   ink-400 (sama seperti GrowthChart.jsx), garis data pakai brand (hijau,
+   sama seperti warna "Pertumbuhan Pendapatan" versi GrowthChart yang
+   digantikan komponen ini), titik tertinggi pakai info (biru), titik
+   terendah pakai warning (emas). */
+const AXIS_COLOR = '#94a3b8'; // ink-400
+const LINE_COLOR = '#2f9c4f'; // brand-500
+
 const chartConfig = {
   value: {
     label: 'Pendapatan',
-    color: '#0b111c', // ink-900 (lihat tailwind.config.js) -- sebelumnya ungu shadcn (#a855f7)
+    color: LINE_COLOR,
   },
 } satisfies ChartConfig;
 
@@ -106,7 +117,7 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
           <h3 className="text-base text-sc-muted-foreground font-medium mb-1">Pendapatan Terkumpul</h3>
           <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-3.5">
             <span className="text-4xl font-bold">{formatRupiahFull(totalRevenue)}</span>
-            <div className={`flex items-center gap-1 ${isUp ? 'text-emerald-600' : 'text-red-600'}`}>
+            <div className={`flex items-center gap-1 ${isUp ? 'text-brand-600' : 'text-danger-600'}`}>
               {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
               <span className="font-medium">
                 {isUp ? '+' : ''}
@@ -125,10 +136,10 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
             </div>
             <div className="flex items-center gap-6 text-sc-muted-foreground">
               <span>
-                Tertinggi: <span className="text-sky-600 font-medium">Rp {formatRupiahCompact(highValue)}</span>
+                Tertinggi: <span className="text-info-600 font-medium">Rp {formatRupiahCompact(highValue)}</span>
               </span>
               <span>
-                Terendah: <span className="text-yellow-600 font-medium">Rp {formatRupiahCompact(lowValue)}</span>
+                Terendah: <span className="text-warning-600 font-medium">Rp {formatRupiahCompact(lowValue)}</span>
               </span>
             </div>
           </div>
@@ -155,7 +166,7 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
                 dataKey="date"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: chartConfig.value.color }}
+                tick={{ fontSize: 12, fill: AXIS_COLOR }}
                 tickMargin={15}
                 interval="preserveStartEnd"
                 tickFormatter={formatDateLabel}
@@ -165,7 +176,7 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: chartConfig.value.color }}
+                tick={{ fontSize: 12, fill: AXIS_COLOR }}
                 tickFormatter={(value) => `Rp ${formatRupiahCompact(value)}`}
                 tickMargin={10}
                 width={72}
