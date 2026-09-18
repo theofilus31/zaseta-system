@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient.js';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
-import Button from '../components/ui/Button.jsx';
+import Button, { SegmentedControl } from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -107,6 +107,13 @@ export default function AssetForm() {
   const [newLocationForm, setNewLocationForm] = useState(EMPTY_NEW_LOCATION);
   const [newLocationError, setNewLocationError] = useState('');
   const [savingNewLocation, setSavingNewLocation] = useState(false);
+  /* Modal ini juga dipakai untuk kasus "lokasinya sudah ada, tinggal
+     tambah sub lokasi baru di bawahnya" — tidak semua kunjungan ke modal
+     ini benar-benar butuh lokasi induk BARU. `locationMode` menentukan
+     apakah field Kode/Nama/Deskripsi (bikin lokasi baru) ditampilkan, atau
+     diganti dropdown pemilih lokasi yang sudah tersimpan. */
+  const [locationMode, setLocationMode] = useState('new'); // 'new' | 'existing'
+  const [existingLocationId, setExistingLocationId] = useState('');
   // Sub lokasi opsional, BISA LEBIH DARI SATU (mis. Lantai 1, Lantai 2,
   // Gudang A) — dibuat lewat modal yang SAMA (bukan modal terpisah), karena
   // sub_locations.location_id wajib mengacu ke lokasi yang baru dibuat itu
@@ -237,34 +244,75 @@ export default function AssetForm() {
     }
   }
 
+  /* Sub lokasi opsional, BISA LEBIH DARI SATU BARIS — baris kosong
+     dilewati, satu per satu berurutan (bukan Promise.all) supaya kalau
+     salah satu gagal (mis. kode dobel), sisanya tetap lanjut dicoba dan
+     pesan galatnya bisa disebutkan per baris. Gagal di sini TIDAK
+     membatalkan lokasi induk yang sudah berhasil dibuat/dipilih. Dipakai
+     KEDUA mode modal ini (lokasi baru MAUPUN lokasi yang sudah ada). */
+  async function createSubLocationRows(locationId) {
+    const rowsToCreate = newSubLocationForms.filter((row) => row.code.trim() && row.name.trim());
+    const createdSubLocations = [];
+    const failedSubLocations = [];
+    for (const row of rowsToCreate) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const subRes = await axiosClient.post('/sub-locations', { ...row, locationId });
+        createdSubLocations.push({ id: String(subRes.data.id), name: subRes.data.name });
+      } catch (subErr) {
+        failedSubLocations.push({ code: row.code, message: subErr.response?.data?.message || 'Gagal ditambahkan.' });
+      }
+    }
+    if (failedSubLocations.length > 0) {
+      pushError(`Sub lokasi ${failedSubLocations.map((f) => `"${f.code}" (${f.message})`).join(', ')} tidak tersimpan.`);
+    }
+    return createdSubLocations;
+  }
+
+  function resetLocationModal() {
+    setNewLocationModal(false);
+    setNewLocationForm(EMPTY_NEW_LOCATION);
+    setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]);
+    setLocationMode('new');
+    setExistingLocationId('');
+  }
+
   async function handleCreateLocation(e) {
     e.preventDefault();
     setNewLocationError('');
+
+    if (locationMode === 'existing') {
+      if (!existingLocationId) { setNewLocationError('Pilih lokasi yang sudah ada terlebih dahulu.'); return; }
+      const rowsFilled = newSubLocationForms.some((row) => row.code.trim() && row.name.trim());
+      if (!rowsFilled) { setNewLocationError('Isi minimal satu sub lokasi untuk ditambahkan.'); return; }
+
+      setSavingNewLocation(true);
+      try {
+        const createdSubLocations = await createSubLocationRows(existingLocationId);
+        // WAJIB dituntaskan sebelum setForm — sama seperti alasannya di
+        // jalur "lokasi baru" di bawah (lihat komentarnya di sana).
+        await loadSubLocations(existingLocationId);
+        const firstSubLocation = createdSubLocations[0];
+        const chosenLocation = locations.find((l) => String(l.id) === String(existingLocationId));
+        setForm((f) => ({ ...f, locationId: String(existingLocationId), subLocationId: firstSubLocation?.id || f.subLocationId }));
+        resetLocationModal();
+        if (createdSubLocations.length > 0) {
+          pushSuccess(`${createdSubLocations.length} sub lokasi ditambahkan ke "${chosenLocation?.name}". "${firstSubLocation.name}" langsung dipilih.`);
+        }
+      } catch (err) {
+        setNewLocationError(err.response?.data?.message || 'Gagal menyimpan sub lokasi.');
+      } finally {
+        setSavingNewLocation(false);
+      }
+      return;
+    }
+
     setSavingNewLocation(true);
     try {
       const res = await axiosClient.post('/locations', newLocationForm);
       await loadLocations();
 
-      // Sub lokasi opsional, BISA LEBIH DARI SATU BARIS — baris kosong
-      // dilewati, satu per satu berurutan (bukan Promise.all) supaya kalau
-      // salah satu gagal (mis. kode dobel), sisanya tetap lanjut dicoba dan
-      // pesan galatnya bisa disebutkan per baris. Gagal di sini TIDAK
-      // membatalkan lokasi induk yang sudah berhasil dibuat.
-      const rowsToCreate = newSubLocationForms.filter((row) => row.code.trim() && row.name.trim());
-      const createdSubLocations = [];
-      const failedSubLocations = [];
-      for (const row of rowsToCreate) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const subRes = await axiosClient.post('/sub-locations', { ...row, locationId: res.data.id });
-          createdSubLocations.push({ id: String(subRes.data.id), name: subRes.data.name });
-        } catch (subErr) {
-          failedSubLocations.push({ code: row.code, message: subErr.response?.data?.message || 'Gagal ditambahkan.' });
-        }
-      }
-      if (failedSubLocations.length > 0) {
-        pushError(`Sub lokasi ${failedSubLocations.map((f) => `"${f.code}" (${f.message})`).join(', ')} tidak tersimpan.`);
-      }
+      const createdSubLocations = await createSubLocationRows(res.data.id);
 
       // WAJIB dituntaskan sebelum setForm — kalau tidak, kotak Sub Lokasi
       // sempat menyinkronkan teksnya duluan terhadap daftar `subLocations`
@@ -279,9 +327,7 @@ export default function AssetForm() {
       // di sistem, tinggal dipilih manual kalau perlu dipakai aset lain.
       const firstSubLocation = createdSubLocations[0];
       setForm((f) => ({ ...f, locationId: String(res.data.id), subLocationId: firstSubLocation?.id || '' }));
-      setNewLocationModal(false);
-      setNewLocationForm(EMPTY_NEW_LOCATION);
-      setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]);
+      resetLocationModal();
       pushSuccess(
         createdSubLocations.length > 0
           ? `Lokasi "${res.data.name}" dan ${createdSubLocations.length} sub lokasi ditambahkan. "${firstSubLocation.name}" langsung dipilih.`
@@ -705,56 +751,81 @@ export default function AssetForm() {
 
       {newLocationModal && (
         <Modal
-          title="Buat Lokasi Baru"
+          title={locationMode === 'existing' ? 'Tambah Sub Lokasi' : 'Buat Lokasi Baru'}
           description="Langsung dipilih ke field Lokasi begitu tersimpan."
           icon="fa-building"
-          onClose={() => { setNewLocationModal(false); setNewLocationError(''); setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]); }}
+          onClose={resetLocationModal}
           footer={
             <>
-              <Button
-                variant="secondary" size="sm" disabled={savingNewLocation}
-                onClick={() => { setNewLocationModal(false); setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]); }}
-              >
+              <Button variant="secondary" size="sm" disabled={savingNewLocation} onClick={resetLocationModal}>
                 Batal
               </Button>
               <Button size="sm" onClick={handleCreateLocation} loading={savingNewLocation}>
-                {savingNewLocation ? 'Menyimpan…' : 'Simpan Lokasi'}
+                {savingNewLocation ? 'Menyimpan…' : locationMode === 'existing' ? 'Simpan Sub Lokasi' : 'Simpan Lokasi'}
               </Button>
             </>
           }
         >
           <form onSubmit={handleCreateLocation} className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <TextField
-                label="Kode" required autoFocus
-                value={newLocationForm.code}
-                onChange={(e) => setNewLocationForm({ ...newLocationForm, code: e.target.value.toUpperCase() })}
-                placeholder="HO"
-                className="col-span-1 font-mono"
-              />
-              <TextField
-                label="Nama Lokasi" required
-                value={newLocationForm.name}
-                onChange={(e) => setNewLocationForm({ ...newLocationForm, name: e.target.value })}
-                placeholder="Head Office"
-                className="col-span-2"
-              />
-            </div>
-            <TextareaField
-              label="Deskripsi"
-              value={newLocationForm.description}
-              onChange={(e) => setNewLocationForm({ ...newLocationForm, description: e.target.value })}
-              rows={2}
-              placeholder="Keterangan singkat (opsional)"
+            {/* Lokasi baru vs lokasi yang sudah tersimpan — dua kebutuhan
+                berbeda yang dulu cuma bisa dipenuhi lewat "buat lokasi baru"
+                walau lokasinya sudah ada, tenant tinggal mau menambah sub
+                lokasi di bawahnya saja. */}
+            <SegmentedControl
+              options={[{ value: 'new', label: 'Lokasi Baru' }, { value: 'existing', label: 'Lokasi Sudah Ada' }]}
+              value={locationMode}
+              onChange={(v) => { setLocationMode(v); setNewLocationError(''); }}
+              size="sm"
             />
+
+            {locationMode === 'existing' ? (
+              <SearchableSelect
+                label="Pilih Lokasi" required autoFocus
+                value={existingLocationId}
+                onChange={setExistingLocationId}
+                options={locations}
+                getOptionLabel={(l) => `${l.code} · ${l.name}`}
+                placeholder="Cari lokasi…" emptyLabel="Pilih lokasi"
+              />
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <TextField
+                    label="Kode" required autoFocus
+                    value={newLocationForm.code}
+                    onChange={(e) => setNewLocationForm({ ...newLocationForm, code: e.target.value.toUpperCase() })}
+                    placeholder="HO"
+                    className="col-span-1 font-mono"
+                  />
+                  <TextField
+                    label="Nama Lokasi" required
+                    value={newLocationForm.name}
+                    onChange={(e) => setNewLocationForm({ ...newLocationForm, name: e.target.value })}
+                    placeholder="Head Office"
+                    className="col-span-2"
+                  />
+                </div>
+                <TextareaField
+                  label="Deskripsi"
+                  value={newLocationForm.description}
+                  onChange={(e) => setNewLocationForm({ ...newLocationForm, description: e.target.value })}
+                  rows={2}
+                  placeholder="Keterangan singkat (opsional)"
+                />
+              </>
+            )}
 
             <div className="flex items-center gap-3" aria-hidden="true">
               <span className="h-px flex-1 bg-ink-200" />
-              <span className="text-xs font-medium text-ink-400">SUB LOKASI (OPSIONAL)</span>
+              <span className="text-xs font-medium text-ink-400">
+                {locationMode === 'existing' ? 'SUB LOKASI BARU' : 'SUB LOKASI (OPSIONAL)'}
+              </span>
               <span className="h-px flex-1 bg-ink-200" />
             </div>
             <p className="text-xs text-ink-400 -mt-2">
-              Isi kalau lokasi ini langsung butuh sub lokasi — mis. ruangan/lantai di dalam {newLocationForm.name || 'lokasi'} ini. Boleh lebih dari satu, atau dikosongkan dan ditambah belakangan.
+              {locationMode === 'existing'
+                ? 'Sub lokasi baru yang ditambahkan di bawah lokasi yang dipilih di atas. Boleh lebih dari satu.'
+                : `Isi kalau lokasi ini langsung butuh sub lokasi — mis. ruangan/lantai di dalam ${newLocationForm.name || 'lokasi'} ini. Boleh lebih dari satu, atau dikosongkan dan ditambah belakangan.`}
             </p>
 
             <div className="space-y-3">
