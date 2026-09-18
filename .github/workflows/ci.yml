@@ -1,0 +1,94 @@
+name: CI
+
+# Gate dasar sebelum merge: test backend (lawan Postgres sungguhan, sama
+# seperti dijalankan lokal — bukan mock) + build frontend. Belum ada test
+# frontend maupun linter (lihat backlog di README/percakapan audit fitur),
+# jadi job frontend cuma memastikan `vite build` tidak pecah.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # Versi disamakan dengan Postgres yang dipakai lokal saat menulis workflow
+    # ini (18.x) — schema.postgres.sql sendiri cuma mensyaratkan "15+", tapi
+    # menyamakan versi menghindari kejutan perilaku spesifik-versi (proyek ini
+    # pernah kejadian nyata: cast tanggal generate_series yang beda hasil
+    # antar setup, lihat riwayat commit soal bug "Invalid Date" di grafik).
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zentra_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: zentra_ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # schema.postgres.sql adalah SATU berkas skema akhir (bukan riwayat
+      # migrasi bertahap, lihat komentar di dalamnya) — cukup untuk
+      # menyiapkan database kosong siap dites, termasuk data wajib (roles,
+      # katalog paket) yang sebelumnya di seed.sql/hardcode.
+      - name: Load schema into CI database
+        run: psql -h localhost -U postgres -d zentra_ci -f schema.postgres.sql
+        env:
+          PGPASSWORD: postgres
+
+      - name: Run backend test suite
+        run: npm test
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build

@@ -7,7 +7,7 @@ const { activateSubscription, cancelActiveSubscription } = require('../src/servi
 const billingController = require('../src/controllers/billingController');
 const { updatePlan } = require('../src/controllers/platformController');
 const { getPlan } = require('../src/config/plans');
-const { createTestTenant, dropTestTenant, bulkInsertAssets } = require('./helpers/testTenant');
+const { createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets } = require('./helpers/testTenant');
 const { mockReq, runMiddleware } = require('./helpers/mockReqRes');
 
 async function currentPlan(tenantId) {
@@ -58,7 +58,10 @@ test('Downgrade Business -> Starter, pemakaian MASIH di bawah limit: tanpa perin
   await activateSubscription({ tenantId, planId: 'business', billingCycle: 'monthly' });
   await bulkInsertAssets(tenantId, 500); // di bawah limit Starter (1.000)
 
-  const req = mockReq({ tenantId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
+  // requested_by NOT NULL + FK ke users(id) -- perlu user SUNGGUHAN, bukan
+  // sekadar userId angka dari mockReq (lihat catatan createTestUser()).
+  const userId = await createTestUser(tenantId);
+  const req = mockReq({ tenantId, userId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
   const { res } = await runMiddleware(billingController.createUpgradeRequest, req);
 
   assert.equal(res.statusCode, 201);
@@ -71,7 +74,8 @@ test('Downgrade Business -> Starter, pemakaian MELEBIHI limit: dapat peringatan,
   await activateSubscription({ tenantId, planId: 'business', billingCycle: 'monthly' });
   await bulkInsertAssets(tenantId, 3000); // di ATAS limit Starter (1.000)
 
-  const req = mockReq({ tenantId, userId: 1, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
+  const userId = await createTestUser(tenantId);
+  const req = mockReq({ tenantId, userId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
   const { res } = await runMiddleware(billingController.createUpgradeRequest, req);
 
   assert.equal(res.statusCode, 201);
@@ -80,7 +84,7 @@ test('Downgrade Business -> Starter, pemakaian MELEBIHI limit: dapat peringatan,
 
   // Setujui permintaannya (simulasikan admin platform) — pastikan approve
   // TIDAK PERNAH menyentuh/menghapus baris assets sama sekali.
-  const approveReq = mockReq({ tenantId, userId: 1, params: { id: String(res.body.id) } });
+  const approveReq = mockReq({ tenantId, userId, params: { id: String(res.body.id) } });
   const { res: approveRes } = await runMiddleware(billingController.approveUpgradeRequest, approveReq);
   assert.equal(approveRes.body.status, 'approved');
 
@@ -95,8 +99,9 @@ test('Harga paket berubah SELAGI permintaan upgrade menunggu: tenant tetap ditag
 
   const tenantId = await createTestTenant('free');
   t.after(() => dropTestTenant(tenantId));
+  const userId = await createTestUser(tenantId);
 
-  const createReq = mockReq({ tenantId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
+  const createReq = mockReq({ tenantId, userId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
   const { res: createRes } = await runMiddleware(billingController.createUpgradeRequest, createReq);
   assert.equal(createRes.statusCode, 201);
   assert.equal(createRes.body.price, originalStarterPrice, 'harga dikunci di angka katalog SAAT MENGAJUKAN');
@@ -106,7 +111,7 @@ test('Harga paket berubah SELAGI permintaan upgrade menunggu: tenant tetap ditag
   assert.equal(priceChange.res.statusCode, 200);
   assert.equal(getPlan('starter').price, 777000);
 
-  const approveReq = mockReq({ tenantId, params: { id: String(createRes.body.id) } });
+  const approveReq = mockReq({ tenantId, userId, params: { id: String(createRes.body.id) } });
   const { res: approveRes } = await runMiddleware(billingController.approveUpgradeRequest, approveReq);
   assert.equal(approveRes.body.status, 'approved');
 

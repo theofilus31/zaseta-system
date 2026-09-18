@@ -74,6 +74,26 @@ async function adminRoleId() {
   return cachedAdminRoleId;
 }
 
+/**
+ * Satu user sungguhan untuk test yang butuh baris `users` NYATA (bukan
+ * cuma `mockReq({ userId: 1 })`) — mis. billingController.createUpgradeRequest
+ * INSERT ke plan_upgrade_requests.requested_by, kolom NOT NULL + FK ke
+ * users(id). `userId: 1` di mockReq() cuma aman selama database dev lokal
+ * kebetulan masih punya user id=1 dari testing manual sebelumnya — di
+ * database bersih (CI, atau siapa pun yang baru pertama kali menjalankan
+ * schema.postgres.sql) itu 404 dan bikin INSERT-nya gagal FK constraint.
+ */
+async function createTestUser(tenantId) {
+  const roleId = await adminRoleId();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const [result] = await pool.query(
+    `INSERT INTO users (tenant_id, username, role_id, name, email, password_hash, status)
+     VALUES (:tenantId, :username, :roleId, 'Test User', :email, 'x', 'active') RETURNING id`,
+    { tenantId, username: `test-user-${suffix}`, roleId, email: `test-user-${suffix}@example.test` }
+  );
+  return result.insertId;
+}
+
 async function bulkInsertUsers(tenantId, count) {
   if (count <= 0) return;
   const roleId = await adminRoleId();
@@ -89,4 +109,4 @@ async function bulkInsertUsers(tenantId, count) {
   );
 }
 
-module.exports = { createTestTenant, dropTestTenant, bulkInsertAssets, bulkInsertLocations, bulkInsertUsers };
+module.exports = { createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets, bulkInsertLocations, bulkInsertUsers };
