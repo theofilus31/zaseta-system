@@ -106,10 +106,12 @@ export default function ConsumablePublicScanPage() {
         </div>
 
         <dl className="px-6 py-5 space-y-2.5 text-[13px]">
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-400">Kategori</dt>
-            <dd className="font-medium text-ink-800">{item.categoryLabel}</dd>
-          </div>
+          {item.assetTypeName && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-ink-400">Kategori</dt>
+              <dd className="font-medium text-ink-800">{item.assetTypeName}</dd>
+            </div>
+          )}
           {item.locationName && (
             <div className="flex justify-between gap-3">
               <dt className="text-ink-400">Lokasi</dt>

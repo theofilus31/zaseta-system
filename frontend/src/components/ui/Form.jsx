@@ -53,6 +53,22 @@ export function SearchInput({ className = '', containerClassName = '', ...props 
   );
 }
 
+/** Tombol kecil di ujung baris label (lihat FormField `labelAction`) — jalan
+    pintas "buat data acuan baru" tanpa meninggalkan form yang sedang diisi.
+    Dipakai lebih dari satu form (AssetForm.jsx, ConsumableList.jsx, dst.). */
+export function CreateNewButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700"
+    >
+      <i className="fas fa-plus text-[9px]" aria-hidden="true" />
+      Buat Baru
+    </button>
+  );
+}
+
 /** Kotak centang dengan label yang bisa diklik. */
 export function Checkbox({ label, description, className = '', ...props }) {
   return (

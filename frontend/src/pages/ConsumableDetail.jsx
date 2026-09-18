@@ -24,7 +24,6 @@ import { ConsumableFormModal } from './ConsumableList.jsx';
  * ============================================================================
  */
 
-const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
 const TYPE_CONFIG = {
   masuk: { label: 'Stok Masuk', icon: 'fa-arrow-down', tone: 'brand', sign: '+' },
   keluar: { label: 'Stok Keluar', icon: 'fa-arrow-up', tone: 'warning', sign: '-' },
@@ -117,7 +116,7 @@ export default function ConsumableDetail() {
         backLabel="Barang Habis Pakai"
         eyebrow={item.code}
         title={item.name}
-        description={<Badge tone="neutral" size="sm">{CATEGORY_LABEL[item.category]}</Badge>}
+        description={item.assetTypeName ? <Badge tone="neutral" size="sm">{item.assetTypeName}</Badge> : undefined}
         actions={
           <>
             <Button to={`/consumables/${id}/qr`} variant="secondary" size="sm">
@@ -248,7 +247,7 @@ export default function ConsumableDetail() {
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-400">Kategori</dt>
-                <dd className="text-ink-700 font-medium">{CATEGORY_LABEL[item.category]}</dd>
+                <dd className="text-ink-700 font-medium">{item.assetTypeName || '—'}</dd>
               </div>
               {item.notes && (
                 <div className="pt-2 border-t border-ink-100">

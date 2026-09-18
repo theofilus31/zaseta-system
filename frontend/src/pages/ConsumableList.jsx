@@ -5,13 +5,14 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
 import Card from '../components/ui/Card.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
-import Button, { SegmentedControl } from '../components/ui/Button.jsx';
+import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import Pagination from '../components/ui/Pagination.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { SearchInput, TextField, SearchableSelect, TextareaField, FormError } from '../components/ui/Form.jsx';
+import { SearchInput, TextField, SearchableSelect, TextareaField, FormError, CreateNewButton } from '../components/ui/Form.jsx';
+import AssetTypeQuickAddModal from '../components/assetTypes/AssetTypeQuickAddModal.jsx';
 
 /**
  * ============================================================================
@@ -21,20 +22,22 @@ import { SearchInput, TextField, SearchableSelect, TextareaField, FormError } fr
  *  dipinjam-kembalikan. Halaman ini menjawab pertanyaan yang paling sering
  *  ditanyakan ke gudang: "stok X tinggal berapa?" — dan menandai jelas yang
  *  sudah di bawah ambang batas.
+ *
+ *  Kategori memakai asset_types (Kategori Aset) yang SAMA dengan Daftar Aset
+ *  -- bukan lagi 4 pilihan tetap sendiri (lihat catatan lengkap di
+ *  migration_consumable_asset_type.sql & consumableController.js).
  * ============================================================================
  */
-
-const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
-const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label }));
 
 export default function ConsumableList() {
   const { can } = useAuth();
   const { pushError, pushSuccess } = useNotification();
 
   const [items, setItems] = useState([]);
+  const [assetTypes, setAssetTypes] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  const [assetTypeId, setAssetTypeId] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -46,7 +49,7 @@ export default function ConsumableList() {
     setLoading(true);
     try {
       const res = await axiosClient.get('/consumables', {
-        params: { search: search || undefined, category: category || undefined, lowStockOnly: lowStockOnly || undefined, page },
+        params: { search: search || undefined, assetTypeId: assetTypeId || undefined, lowStockOnly: lowStockOnly || undefined, page },
       });
       setItems(res.data.data);
       setPagination(res.data.pagination);
@@ -55,7 +58,13 @@ export default function ConsumableList() {
     } finally {
       setLoading(false);
     }
-  }, [search, category, lowStockOnly, page, pushError]);
+  }, [search, assetTypeId, lowStockOnly, page, pushError]);
+
+  const muatAssetTypes = useCallback(() => {
+    return axiosClient.get('/asset-types').then((res) => setAssetTypes(res.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => { muatAssetTypes(); }, [muatAssetTypes]);
 
   useEffect(() => {
     const t = setTimeout(muat, search ? 350 : 0);
@@ -67,6 +76,11 @@ export default function ConsumableList() {
     pushSuccess(res.message);
     setPage(1);
     muat();
+    // Barang baru bisa saja dibuat sambil membuat kategori BARU juga (lewat
+    // "+ Buat Baru" di dalam modal) -- daftar filter di sini punya state
+    // sendiri, terpisah dari modal, jadi perlu disegarkan juga supaya
+    // kategori yang baru dibuat langsung muncul di sini tanpa reload halaman.
+    muatAssetTypes();
   }
 
   return (
@@ -89,16 +103,12 @@ export default function ConsumableList() {
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             containerClassName="flex-1"
           />
-          <SegmentedControl
-            value={category}
-            onChange={(v) => { setCategory(v); setPage(1); }}
-            options={[
-              { value: '', label: 'Semua' },
-              { value: 'atk', label: 'ATK' },
-              { value: 'kebersihan', label: 'Kebersihan' },
-              { value: 'it_supplies', label: 'IT' },
-              { value: 'lainnya', label: 'Lainnya' },
-            ]}
+          <SearchableSelect
+            value={assetTypeId}
+            onChange={(v) => { setAssetTypeId(v); setPage(1); }}
+            options={assetTypes}
+            placeholder="Semua Kategori" emptyLabel="Semua Kategori"
+            className="w-full sm:w-56"
           />
           <Button
             variant={lowStockOnly ? 'primary' : 'secondary'}
@@ -116,9 +126,9 @@ export default function ConsumableList() {
         ) : items.length === 0 ? (
           <EmptyState
             icon="fa-boxes-stacked"
-            title={search || category || lowStockOnly ? 'Tidak ada barang yang cocok' : 'Belum ada barang habis pakai'}
+            title={search || assetTypeId || lowStockOnly ? 'Tidak ada barang yang cocok' : 'Belum ada barang habis pakai'}
             description="Tambahkan barang seperti kertas, toner, atau alat kebersihan untuk mulai mencatat stoknya."
-            action={canCreate && !search && !category && !lowStockOnly && (
+            action={canCreate && !search && !assetTypeId && !lowStockOnly && (
               <Button onClick={() => setShowCreate(true)}>
                 <i className="fas fa-plus text-xs" aria-hidden="true" /> Tambah Barang Pertama
               </Button>
@@ -150,7 +160,7 @@ export default function ConsumableList() {
                       </Link>
                       {item.notes && <p className="text-[11px] text-ink-400 mt-0.5 truncate max-w-[16rem]">{item.notes}</p>}
                     </td>
-                    <td><Badge tone="neutral" size="sm">{CATEGORY_LABEL[item.category]}</Badge></td>
+                    <td>{item.assetTypeName ? <Badge tone="neutral" size="sm">{item.assetTypeName}</Badge> : <span className="text-ink-300">—</span>}</td>
                     <td className="text-[13px] text-ink-500">{item.locationName || '—'}</td>
                     <td className="text-right">
                       <span className={`font-semibold tabular-nums ${item.lowStock ? 'text-danger-600' : 'text-ink-800'}`}>
@@ -192,9 +202,11 @@ export default function ConsumableList() {
 
 export function ConsumableFormModal({ item, onClose, onSaved }) {
   const [locations, setLocations] = useState([]);
+  const [assetTypes, setAssetTypes] = useState([]);
+  const [showNewAssetType, setShowNewAssetType] = useState(false);
   const [form, setForm] = useState({
     name: item?.name || '',
-    category: item?.category || 'atk',
+    assetTypeId: item?.assetTypeId || '',
     unit: item?.unit || 'pcs',
     minStock: item?.minStock ?? 0,
     locationId: item?.locationId || '',
@@ -203,8 +215,13 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  function loadAssetTypes() {
+    return axiosClient.get('/asset-types').then((res) => { setAssetTypes(res.data); return res.data; }).catch(() => []);
+  }
+
   useEffect(() => {
     axiosClient.get('/locations').then((res) => setLocations(res.data.data || res.data)).catch(() => {});
+    loadAssetTypes();
   }, []);
 
   const change = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -250,10 +267,10 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <SearchableSelect
-            label="Kategori" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))}
-            clearable={false}
-            options={CATEGORY_OPTIONS} getOptionLabel={(c) => c.label} getOptionValue={(c) => c.value}
-            placeholder="Cari kategori…"
+            label="Kategori" value={form.assetTypeId} onChange={(v) => setForm((f) => ({ ...f, assetTypeId: v }))}
+            options={assetTypes}
+            placeholder="Cari kategori…" emptyLabel="Belum ditentukan"
+            labelAction={<CreateNewButton onClick={() => setShowNewAssetType(true)} />}
           />
           <TextField
             label="Satuan" name="unit" required
@@ -283,6 +300,17 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
 
         <FormError>{error}</FormError>
       </form>
+
+      {showNewAssetType && (
+        <AssetTypeQuickAddModal
+          onClose={() => setShowNewAssetType(false)}
+          onCreated={async (created) => {
+            await loadAssetTypes();
+            setForm((f) => ({ ...f, assetTypeId: String(created.id) }));
+            setShowNewAssetType(false);
+          }}
+        />
+      )}
     </Modal>
   );
 }

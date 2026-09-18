@@ -8,27 +8,13 @@ import PageHeader from '../components/ui/PageHeader.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
 import { useUnsavedChanges, useUnsavedChangesContext } from '../context/UnsavedChangesContext.jsx';
 import {
-  TextField, SearchableSelect, DateField, TextareaField, FormField, Checkbox, FormError,
+  TextField, SearchableSelect, DateField, TextareaField, FormField, Checkbox, FormError, CreateNewButton,
 } from '../components/ui/Form.jsx';
+import AssetTypeQuickAddModal from '../components/assetTypes/AssetTypeQuickAddModal.jsx';
 
 const EMPTY_NEW_CATEGORY = { name: '', slug: '' };
-const EMPTY_NEW_ASSET_TYPE = { name: '', description: '' };
 const EMPTY_NEW_LOCATION = { code: '', name: '', description: '' };
 const EMPTY_NEW_SUB_LOCATION = { code: '', name: '' };
-
-/** Tombol kecil di ujung baris label — lihat FormField.jsx (`labelAction`). */
-function CreateNewButton({ onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700"
-    >
-      <i className="fas fa-plus text-[9px]" aria-hidden="true" />
-      Buat Baru
-    </button>
-  );
-}
 
 const STATUS_OPTIONS = [
   { value: 'idle', label: 'Menganggur' },
@@ -107,12 +93,10 @@ export default function AssetForm() {
   /* Sama seperti kode barang di atas — "Kategori Aset" dulunya cuma bisa
      dipilih dari yang sudah ada, jadi tenant baru (belum sempat mengisi
      Data Acuan) wajib pindah halaman dulu sebelum bisa menambah aset sama
-     sekali. Endpoint (POST /asset-types) sudah lama ada untuk halaman
-     AssetTypeManagement.jsx, ini cuma jalan pintas dari dalam form. */
+     sekali. Modalnya sendiri (AssetTypeQuickAddModal) dipakai bersama
+     dengan ConsumableList.jsx sejak barang habis pakai ikut memakai
+     kategori yang sama (lihat migration_consumable_asset_type.sql). */
   const [newAssetTypeModal, setNewAssetTypeModal] = useState(false);
-  const [newAssetTypeForm, setNewAssetTypeForm] = useState(EMPTY_NEW_ASSET_TYPE);
-  const [newAssetTypeError, setNewAssetTypeError] = useState('');
-  const [savingNewAssetType, setSavingNewAssetType] = useState(false);
 
   const [newLocationModal, setNewLocationModal] = useState(false);
   const [newLocationForm, setNewLocationForm] = useState(EMPTY_NEW_LOCATION);
@@ -255,24 +239,6 @@ export default function AssetForm() {
       setNewCategoryError(err.response?.data?.message || 'Gagal menyimpan kode barang/aset.');
     } finally {
       setSavingNewCategory(false);
-    }
-  }
-
-  async function handleCreateAssetType(e) {
-    e.preventDefault();
-    setNewAssetTypeError('');
-    setSavingNewAssetType(true);
-    try {
-      const res = await axiosClient.post('/asset-types', newAssetTypeForm);
-      await loadAssetTypes();
-      setForm((f) => ({ ...f, assetTypeId: String(res.data.id) }));
-      setNewAssetTypeModal(false);
-      setNewAssetTypeForm(EMPTY_NEW_ASSET_TYPE);
-      pushSuccess(`Kategori aset "${res.data.name}" ditambahkan dan langsung dipilih.`);
-    } catch (err) {
-      setNewAssetTypeError(err.response?.data?.message || 'Gagal menyimpan kategori aset.');
-    } finally {
-      setSavingNewAssetType(false);
     }
   }
 
@@ -783,36 +749,15 @@ export default function AssetForm() {
       )}
 
       {newAssetTypeModal && (
-        <Modal
-          title="Buat Kategori Aset Baru"
-          description="Langsung dipilih ke field Kategori Aset begitu tersimpan."
-          icon="fa-layer-group"
-          onClose={() => { setNewAssetTypeModal(false); setNewAssetTypeError(''); }}
-          footer={
-            <>
-              <Button variant="secondary" size="sm" onClick={() => setNewAssetTypeModal(false)} disabled={savingNewAssetType}>Batal</Button>
-              <Button size="sm" onClick={handleCreateAssetType} loading={savingNewAssetType}>
-                {savingNewAssetType ? 'Menyimpan…' : 'Simpan Kategori Aset'}
-              </Button>
-            </>
-          }
-        >
-          <form onSubmit={handleCreateAssetType} className="space-y-4">
-            <TextField
-              label="Nama" required autoFocus
-              value={newAssetTypeForm.name}
-              onChange={(e) => setNewAssetTypeForm({ ...newAssetTypeForm, name: e.target.value })}
-              placeholder="Mis. Laptop"
-            />
-            <TextareaField
-              label="Deskripsi" rows={2}
-              value={newAssetTypeForm.description}
-              onChange={(e) => setNewAssetTypeForm({ ...newAssetTypeForm, description: e.target.value })}
-              placeholder="Opsional — keterangan singkat kategori ini."
-            />
-            <FormError>{newAssetTypeError}</FormError>
-          </form>
-        </Modal>
+        <AssetTypeQuickAddModal
+          onClose={() => setNewAssetTypeModal(false)}
+          onCreated={async (created) => {
+            await loadAssetTypes();
+            setForm((f) => ({ ...f, assetTypeId: String(created.id) }));
+            setNewAssetTypeModal(false);
+            pushSuccess(`Kategori aset "${created.name}" ditambahkan dan langsung dipilih.`);
+          }}
+        />
       )}
 
       {newLocationModal && (

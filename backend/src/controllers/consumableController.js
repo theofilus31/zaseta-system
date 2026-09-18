@@ -16,11 +16,15 @@ const { clampPagination } = require('../utils/pagination');
  *  tabel consumables HANYA boleh berubah lewat tiga aksi (masuk/keluar/
  *  penyesuaian), tidak pernah lewat endpoint ubah data biasa — supaya angka
  *  stok selalu punya jejak transaksi yang menjelaskannya.
+ *
+ *  Kategori memakai asset_types (tabel yang SAMA dengan "Kategori Aset" di
+ *  Daftar Aset) -- bukan lagi enum VARCHAR terkunci milik barang habis pakai
+ *  sendiri (lihat migration_consumable_asset_type.sql). Tenant mengelola
+ *  satu daftar kategori dari satu tempat untuk aset maupun barang habis
+ *  pakai, termasuk lewat tombol "+ Buat Baru" di kedua form.
  * ============================================================================
  */
 
-const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
-const CATEGORIES = Object.keys(CATEGORY_LABEL);
 const TYPE_LABEL = { masuk: 'Stok Masuk', keluar: 'Stok Keluar', penyesuaian: 'Penyesuaian' };
 
 async function generateConsumableCode(tenantId) {
@@ -34,8 +38,8 @@ function toItem(row) {
     id: row.id,
     code: row.code,
     name: row.name,
-    category: row.category,
-    categoryLabel: CATEGORY_LABEL[row.category] || row.category,
+    assetTypeId: row.asset_type_id,
+    assetTypeName: row.asset_type_name || null,
     unit: row.unit,
     currentStock: row.current_stock,
     minStock: row.min_stock,
@@ -49,13 +53,14 @@ function toItem(row) {
 }
 
 const SELECT_ITEM = `
-  SELECT c.*, l.name AS location_name
+  SELECT c.*, l.name AS location_name, at.name AS asset_type_name
   FROM consumables c
-  LEFT JOIN locations l ON l.id = c.location_id`;
+  LEFT JOIN locations l ON l.id = c.location_id
+  LEFT JOIN asset_types at ON at.id = c.asset_type_id`;
 
-// GET /api/consumables?search=&category=&lowStockOnly=&page=&limit=
+// GET /api/consumables?search=&assetTypeId=&lowStockOnly=&page=&limit=
 const listConsumables = asyncHandler(async (req, res) => {
-  const { search = '', category = '', lowStockOnly } = req.query;
+  const { search = '', assetTypeId = '', lowStockOnly } = req.query;
   const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
   const offset = (page - 1) * limit;
 
@@ -66,9 +71,9 @@ const listConsumables = asyncHandler(async (req, res) => {
     conditions.push('(c.name ILIKE :search OR c.code ILIKE :search)');
     params.search = `%${search}%`;
   }
-  if (category && CATEGORIES.includes(category)) {
-    conditions.push('c.category = :category');
-    params.category = category;
+  if (assetTypeId) {
+    conditions.push('c.asset_type_id = :assetTypeId');
+    params.assetTypeId = assetTypeId;
   }
   if (lowStockOnly === 'true') {
     conditions.push('c.current_stock <= c.min_stock');
@@ -130,14 +135,17 @@ const getConsumableByCode = asyncHandler(async (req, res) => {
 
 // POST /api/consumables
 const createConsumable = asyncHandler(async (req, res) => {
-  const { name, category = 'lainnya', unit = 'pcs', minStock = 0, locationId, notes } = req.body;
+  const { name, assetTypeId, unit = 'pcs', minStock = 0, locationId, notes } = req.body;
   const tenantId = req.user.tenant_id;
 
   if (!String(name || '').trim()) return res.status(400).json({ message: 'Nama barang wajib diisi.' });
-  if (!CATEGORIES.includes(category)) return res.status(400).json({ message: 'Kategori tidak dikenal.' });
   if (!String(unit || '').trim()) return res.status(400).json({ message: 'Satuan wajib diisi.' });
 
-  // locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  // assetTypeId & locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  if (assetTypeId) {
+    const [typeRows] = await pool.query(`SELECT id FROM asset_types WHERE id = :assetTypeId AND tenant_id = :tenantId`, { assetTypeId, tenantId });
+    if (!typeRows[0]) return res.status(400).json({ message: 'Kategori tidak valid.' });
+  }
   if (locationId) {
     const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
     if (!locRows[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
@@ -145,11 +153,11 @@ const createConsumable = asyncHandler(async (req, res) => {
 
   const code = await generateConsumableCode(tenantId);
   const [result] = await pool.query(
-    `INSERT INTO consumables (tenant_id, code, name, category, unit, min_stock, location_id, notes, created_by)
-     VALUES (:tenantId, :code, :name, :category, :unit, :minStock, :locationId, :notes, :userId)
+    `INSERT INTO consumables (tenant_id, code, name, asset_type_id, unit, min_stock, location_id, notes, created_by)
+     VALUES (:tenantId, :code, :name, :assetTypeId, :unit, :minStock, :locationId, :notes, :userId)
      RETURNING id`,
     {
-      tenantId, code, name: name.trim(), category, unit: unit.trim(),
+      tenantId, code, name: name.trim(), assetTypeId: assetTypeId || null, unit: unit.trim(),
       minStock: Number(minStock) || 0, locationId: locationId || null,
       notes: notes || null, userId: req.user.id,
     }
@@ -157,7 +165,7 @@ const createConsumable = asyncHandler(async (req, res) => {
 
   await logAudit({
     userId: req.user.id, action: 'create', entityType: 'consumable', entityId: result.insertId,
-    newValues: { code, name, category, unit }, ipAddress: req.ip,
+    newValues: { code, name, assetTypeId, unit }, ipAddress: req.ip,
   });
 
   const [rows] = await pool.query(`${SELECT_ITEM} WHERE c.id = :id`, { id: result.insertId });
@@ -167,16 +175,19 @@ const createConsumable = asyncHandler(async (req, res) => {
 // PUT /api/consumables/:id — kode & stok TIDAK bisa diubah di sini
 const updateConsumable = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, category, unit, minStock, locationId, notes } = req.body;
+  const { name, assetTypeId, unit, minStock, locationId, notes } = req.body;
   const tenantId = req.user.tenant_id;
 
   if (!String(name || '').trim()) return res.status(400).json({ message: 'Nama barang wajib diisi.' });
-  if (!CATEGORIES.includes(category)) return res.status(400).json({ message: 'Kategori tidak dikenal.' });
 
   const [rows] = await pool.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   if (!rows[0]) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
 
-  // locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  // assetTypeId & locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  if (assetTypeId) {
+    const [typeRows] = await pool.query(`SELECT id FROM asset_types WHERE id = :assetTypeId AND tenant_id = :tenantId`, { assetTypeId, tenantId });
+    if (!typeRows[0]) return res.status(400).json({ message: 'Kategori tidak valid.' });
+  }
   if (locationId) {
     const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
     if (!locRows[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
@@ -184,19 +195,19 @@ const updateConsumable = asyncHandler(async (req, res) => {
 
   await pool.query(
     `UPDATE consumables
-     SET name = :name, category = :category, unit = :unit, min_stock = :minStock,
+     SET name = :name, asset_type_id = :assetTypeId, unit = :unit, min_stock = :minStock,
          location_id = :locationId, notes = :notes
      WHERE id = :id AND tenant_id = :tenantId`,
     {
-      id, tenantId, name: name.trim(), category, unit: (unit || 'pcs').trim(),
+      id, tenantId, name: name.trim(), assetTypeId: assetTypeId || null, unit: (unit || 'pcs').trim(),
       minStock: Number(minStock) || 0, locationId: locationId || null, notes: notes || null,
     }
   );
 
   await logAudit({
     userId: req.user.id, action: 'update', entityType: 'consumable', entityId: id,
-    oldValues: { name: rows[0].name, category: rows[0].category },
-    newValues: { name, category, unit, minStock }, ipAddress: req.ip,
+    oldValues: { name: rows[0].name, assetTypeId: rows[0].asset_type_id },
+    newValues: { name, assetTypeId, unit, minStock }, ipAddress: req.ip,
   });
 
   res.json({ message: 'Barang berhasil diperbarui.' });
@@ -426,6 +437,6 @@ const adjustStock = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  CATEGORY_LABEL, listConsumables, getConsumable, getConsumableByCode, createConsumable, updateConsumable, deleteConsumable,
+  listConsumables, getConsumable, getConsumableByCode, createConsumable, updateConsumable, deleteConsumable,
   listTransactions, stockIn, stockOut, adjustStock,
 };

@@ -593,13 +593,16 @@ CREATE TRIGGER trg_asset_maintenances_updated_at BEFORE UPDATE ON asset_maintena
 -- =====================================================================
 -- 22. CONSUMABLES (barang habis pakai) + kartu stok
 -- =====================================================================
+-- Kategori barang habis pakai memakai asset_types (bagian 5) YANG SAMA
+-- dengan "Kategori Aset" di Daftar Aset -- satu daftar kategori dikelola
+-- dari satu tempat untuk aset maupun barang habis pakai, bukan sistem
+-- kategori terkunci terpisah (lihat migration_consumable_asset_type.sql).
 CREATE TABLE consumables (
     id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id      BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     code           VARCHAR(30) NOT NULL,
     name           VARCHAR(150) NOT NULL,
-    category       VARCHAR(20) NOT NULL DEFAULT 'lainnya'
-                       CHECK (category IN ('atk','kebersihan','it_supplies','lainnya')),
+    asset_type_id  BIGINT NULL REFERENCES asset_types(id) ON DELETE SET NULL,
     unit           VARCHAR(20) NOT NULL DEFAULT 'pcs',
     current_stock  INT NOT NULL DEFAULT 0,
     min_stock      INT NOT NULL DEFAULT 0,
@@ -614,6 +617,7 @@ CREATE TABLE consumables (
 CREATE INDEX idx_consumable_active ON consumables(is_active);
 CREATE INDEX idx_consumable_low_stock ON consumables(is_active, current_stock);
 CREATE INDEX idx_consumable_tenant ON consumables(tenant_id);
+CREATE INDEX idx_consumable_asset_type ON consumables(asset_type_id);
 CREATE TRIGGER trg_consumables_updated_at BEFORE UPDATE ON consumables
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 

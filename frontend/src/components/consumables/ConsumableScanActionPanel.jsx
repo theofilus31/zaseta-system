@@ -5,8 +5,6 @@ import { useNotification } from '../../context/NotificationContext.jsx';
 import Button from '../ui/Button.jsx';
 import { StockInModal, StockOutModal } from '../../pages/ConsumableDetail.jsx';
 
-const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
-
 /**
  * ============================================================================
  *  PANEL AKSI HASIL PINDAIAN — BARANG HABIS PAKAI
@@ -58,7 +56,7 @@ export default function ConsumableScanActionPanel({ item, onRefresh }) {
           </div>
           <div className="rounded-xl bg-ink-50 px-3.5 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Kategori</p>
-            <p className="mt-1.5 text-[13px] font-medium text-ink-800">{item.categoryLabel || CATEGORY_LABEL[item.category]}</p>
+            <p className="mt-1.5 text-[13px] font-medium text-ink-800">{item.assetTypeName || '—'}</p>
           </div>
         </div>
 

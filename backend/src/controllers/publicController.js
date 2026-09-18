@@ -67,8 +67,6 @@ const scanAsset = asyncHandler(async (req, res) => {
   res.json({ ...publicAsset, customFields: customFieldRows });
 });
 
-const CONSUMABLE_CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
-
 // GET /api/public/scan-consumable/:code — TANPA AUTH. Menyertakan angka stok
 // apa adanya -- tujuan utama memindai barcode barang habis pakai justru
 // "stok tinggal berapa", jadi menyembunyikannya di sini (beda dari versi awal
@@ -85,9 +83,10 @@ const scanConsumable = asyncHandler(async (req, res) => {
   const consumableId = qrRows[0].consumable_id;
 
   const [rows] = await pool.query(
-    `SELECT c.id, c.tenant_id, c.code, c.name, c.category, c.unit, c.current_stock, c.min_stock, l.name AS location_name
+    `SELECT c.id, c.tenant_id, c.code, c.name, c.unit, c.current_stock, c.min_stock, l.name AS location_name, at.name AS asset_type_name
      FROM consumables c
      LEFT JOIN locations l ON l.id = c.location_id
+     LEFT JOIN asset_types at ON at.id = c.asset_type_id
      WHERE c.id = :consumableId AND c.is_active = TRUE`,
     { consumableId }
   );
@@ -99,7 +98,7 @@ const scanConsumable = asyncHandler(async (req, res) => {
 
   res.json({
     code: item.code, name: item.name, unit: item.unit,
-    categoryLabel: CONSUMABLE_CATEGORY_LABEL[item.category] || item.category,
+    assetTypeName: item.asset_type_name,
     locationName: item.location_name,
     currentStock: item.current_stock,
     minStock: item.min_stock,
