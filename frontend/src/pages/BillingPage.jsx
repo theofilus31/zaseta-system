@@ -403,6 +403,9 @@ export default function BillingPage() {
                   <Badge tone={INVOICE_STATUS_TONE[inv.status] || 'neutral'} size="sm">
                     {INVOICE_STATUS_LABEL[inv.status] || inv.status}
                   </Badge>
+                  <Button to={`/billing/invoices/${inv.id}`} size="sm" variant="secondary" title="Lihat & unduh invoice">
+                    <i className="fas fa-download text-xs" aria-hidden="true" />
+                  </Button>
                 </div>
               </div>
             ))}

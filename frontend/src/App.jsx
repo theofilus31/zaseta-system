@@ -35,6 +35,7 @@ import ZecodePage from './pages/ZecodePage.jsx';
 import PublicScanPage from './pages/PublicScanPage.jsx';
 import PublicRequestPage from './pages/PublicRequestPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
+import InvoicePrintPage from './pages/InvoicePrintPage.jsx';
 import PlatformBillingRequests from './pages/PlatformBillingRequests.jsx';
 import PlatformDashboard from './pages/PlatformDashboard.jsx';
 import PlatformTenants from './pages/PlatformTenants.jsx';
@@ -143,6 +144,7 @@ export default function App() {
         <Route path="/trash" element={<ProtectedRoute module="trash"><TrashPage /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute module="settings"><SettingsPage /></ProtectedRoute>} />
         <Route path="/billing" element={<ProtectedRoute module="billing"><BillingPage /></ProtectedRoute>} />
+        <Route path="/billing/invoices/:id" element={<ProtectedRoute module="billing"><InvoicePrintPage /></ProtectedRoute>} />
       </Route>
 
       {/* Lintas tenant, khusus admin platform (Fase 5 SaaS) — bukan modul yang

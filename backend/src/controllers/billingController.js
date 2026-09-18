@@ -134,6 +134,35 @@ const listInvoices = asyncHandler(async (req, res) => {
 });
 
 /**
+ * GET /api/billing/invoices/:id — detail SATU invoice, dipakai halaman
+ * cetak/unduh (InvoicePrintPage.jsx — "unduh" di sini berarti print-to-PDF
+ * lewat browser, pola yang sama dengan BastPrintPage.jsx, bukan PDF yang
+ * dirender di server). Scoped ke tenant_id (bukan sekadar `id` dari URL)
+ * supaya tenant lain tidak bisa menebak nomor invoice tenant lain.
+ */
+const getInvoice = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  const [[row]] = await pool.query(
+    `SELECT i.id, i.invoice_number AS "invoiceNumber", i.amount, i.currency, i.status,
+            i.payment_method AS "paymentMethod", i.paid_at AS "paidAt", i.due_at AS "dueAt",
+            i.provider, i.created_at AS "createdAt",
+            s.plan_id AS "planId", s.billing_cycle AS "billingCycle",
+            s.current_period_start AS "periodStart", s.current_period_end AS "periodEnd",
+            t.company_name AS "companyName"
+     FROM invoices i
+     LEFT JOIN subscriptions s ON s.id = i.subscription_id
+     JOIN tenants t ON t.id = i.tenant_id
+     WHERE i.id = :id AND i.tenant_id = :tenantId`,
+    { id, tenantId }
+  );
+  if (!row) return res.status(404).json({ message: 'Invoice tidak ditemukan.' });
+
+  res.json({ invoice: { ...row, planName: getPlan(row.planId)?.name || row.planId } });
+});
+
+/**
  * POST /api/billing/upgrade-requests — { requestedPlan, billingCycle?, note? }
  * Admin-only (lihat routes/billingRoutes.js): keputusan finansial/kontraktual,
  * bukan sesuatu yang masuk akal didelegasikan lewat matriks izin per-menu
@@ -367,6 +396,7 @@ module.exports = {
   getPlans,
   getMyBilling,
   listInvoices,
+  getInvoice,
   createUpgradeRequest,
   cancelSubscription,
   listUpgradeRequests,

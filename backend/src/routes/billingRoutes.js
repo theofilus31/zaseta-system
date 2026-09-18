@@ -15,6 +15,7 @@ router.use(authenticate);
 // modul 'billing' supaya sidebar & rute frontend konsisten dengan pola menu lain.
 router.get('/me', requirePermission('billing', 'view'), ctrl.getMyBilling);
 router.get('/invoices', requirePermission('billing', 'view'), ctrl.listInvoices);
+router.get('/invoices/:id', requirePermission('billing', 'view'), ctrl.getInvoice);
 
 // Mengajukan upgrade/downgrade & membatalkan langganan adalah keputusan
 // finansial/kontraktual — sengaja dijaga requireRole('admin'), bukan matriks
