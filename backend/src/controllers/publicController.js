@@ -69,10 +69,12 @@ const scanAsset = asyncHandler(async (req, res) => {
 
 const CONSUMABLE_CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
 
-// GET /api/public/scan-consumable/:code — TANPA AUTH. Sengaja TIDAK menyertakan
-// angka stok (current_stock/min_stock) -- siapa pun yang menemukan/memotret
-// label barcode ini tidak seharusnya bisa melihat level persediaan barang,
-// beda dari aset yang memang wajar dilihat siapa saja (identitas fisik).
+// GET /api/public/scan-consumable/:code — TANPA AUTH. Menyertakan angka stok
+// apa adanya -- tujuan utama memindai barcode barang habis pakai justru
+// "stok tinggal berapa", jadi menyembunyikannya di sini (beda dari versi awal
+// fitur ini) hanya membuat pindaian tanpa login jadi tidak berguna. Beda
+// kasus dari data uang/pelanggan di tempat lain sistem ini yang memang perlu
+// dijaga -- level stok ATK/kebersihan bukan informasi rahasia.
 const scanConsumable = asyncHandler(async (req, res) => {
   const { code } = req.params;
 
@@ -83,7 +85,7 @@ const scanConsumable = asyncHandler(async (req, res) => {
   const consumableId = qrRows[0].consumable_id;
 
   const [rows] = await pool.query(
-    `SELECT c.id, c.tenant_id, c.code, c.name, c.category, c.unit, l.name AS location_name
+    `SELECT c.id, c.tenant_id, c.code, c.name, c.category, c.unit, c.current_stock, c.min_stock, l.name AS location_name
      FROM consumables c
      LEFT JOIN locations l ON l.id = c.location_id
      WHERE c.id = :consumableId AND c.is_active = TRUE`,
@@ -99,6 +101,9 @@ const scanConsumable = asyncHandler(async (req, res) => {
     code: item.code, name: item.name, unit: item.unit,
     categoryLabel: CONSUMABLE_CATEGORY_LABEL[item.category] || item.category,
     locationName: item.location_name,
+    currentStock: item.current_stock,
+    minStock: item.min_stock,
+    lowStock: item.current_stock <= item.min_stock,
   });
 });
 

@@ -91,14 +91,24 @@ export default function ConsumablePublicScanPage() {
           <p className="text-base font-bold text-ink-900">{item.name}</p>
           <p className="text-[13px] font-mono text-ink-400 mt-1">{item.code}</p>
         </div>
+
+        <div className="px-6 py-5 border-b border-ink-100 text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Stok Saat Ini</p>
+          <p className={`mt-1 text-3xl font-bold tabular-nums ${item.lowStock ? 'text-danger-600' : 'text-ink-900'}`}>
+            {item.currentStock} <span className="text-sm font-medium text-ink-400">{item.unit}</span>
+          </p>
+          {item.lowStock && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-danger-50 px-3 py-1 text-xs font-medium text-danger-700">
+              <i className="fas fa-triangle-exclamation text-[10px]" aria-hidden="true" />
+              {item.currentStock <= 0 ? 'Stok habis' : `Di bawah ambang (${item.minStock})`}
+            </p>
+          )}
+        </div>
+
         <dl className="px-6 py-5 space-y-2.5 text-[13px]">
           <div className="flex justify-between gap-3">
             <dt className="text-ink-400">Kategori</dt>
             <dd className="font-medium text-ink-800">{item.categoryLabel}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-400">Satuan</dt>
-            <dd className="font-medium text-ink-800">{item.unit}</dd>
           </div>
           {item.locationName && (
             <div className="flex justify-between gap-3">
