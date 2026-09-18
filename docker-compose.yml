@@ -1,0 +1,65 @@
+# ============================================================================
+#  DOCKER COMPOSE — jalan 3 layanan sekaligus di satu mesin (VPS/lokal)
+# ============================================================================
+#  Belum diuji jalan sungguhan di lingkungan ini (Docker tidak tersedia saat
+#  ditulis) -- coba `docker compose up --build` dulu sebelum dipakai
+#  produksi sungguhan. Untuk beban produksi nyata, Postgres sebaiknya
+#  layanan terkelola terpisah (RDS/Supabase/Neon/dst.), bukan container di
+#  compose yang sama -- volume Docker BUKAN pengganti strategi backup.
+#
+#  Siapkan dulu:
+#    1. backend/.env  — isi dari backend/.env.example (DB_HOST harus "db",
+#       ikut nama servis Postgres di bawah, BUKAN "localhost")
+#    2. .env di folder ini (root) — isi dari .env.example di root, cuma
+#       dipakai docker-compose untuk mem-bake VITE_API_URL/VITE_GOOGLE_CLIENT_ID
+#       ke build frontend (batas Vite: env var frontend selalu waktu-build)
+#
+#  Jalankan   : docker compose up --build -d
+#  Skema baru : docker compose exec db psql -U postgres -d zentra_prod -f /schema.postgres.sql
+#               (atau psql dari luar container ke port 5432 yang di-expose)
+# ============================================================================
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env root}
+      POSTGRES_DB: ${DB_NAME:-zentra_prod}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backend/schema.postgres.sql:/schema.postgres.sql:ro
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '4000:4000'
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - '8080:80'
+
+volumes:
+  db_data:

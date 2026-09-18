@@ -742,10 +742,12 @@ export function Footer() {
           <span className="text-sm font-bold text-ink-800">{PRODUCT_NAME}</span>
         </div>
         <p className="text-xs text-ink-400">© {new Date().getFullYear()} {PRODUCT_NAME}. Seluruh hak cipta dilindungi.</p>
-        <div className="flex items-center gap-4 text-xs text-ink-500">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs text-ink-500">
           <Link to="/harga" className="hover:text-ink-800">Harga</Link>
           <Link to="/login" className="hover:text-ink-800">Masuk</Link>
           <Link to="/signup" className="hover:text-ink-800">Daftar</Link>
+          <Link to="/kebijakan-privasi" className="hover:text-ink-800">Kebijakan Privasi</Link>
+          <Link to="/syarat-ketentuan" className="hover:text-ink-800">Syarat &amp; Ketentuan</Link>
         </div>
       </div>
     </footer>

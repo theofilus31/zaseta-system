@@ -642,6 +642,18 @@ export default function Signup() {
                 </Button>
               </motion.div>
 
+              <p className="text-center text-[12px] text-ink-400 !mt-3 leading-relaxed">
+                Dengan mendaftar, Anda menyetujui{' '}
+                <Link to="/syarat-ketentuan" target="_blank" className="font-medium text-ink-500 hover:text-brand-600 underline underline-offset-2">
+                  Syarat &amp; Ketentuan
+                </Link>{' '}
+                dan{' '}
+                <Link to="/kebijakan-privasi" target="_blank" className="font-medium text-ink-500 hover:text-brand-600 underline underline-offset-2">
+                  Kebijakan Privasi
+                </Link>{' '}
+                kami.
+              </p>
+
               {!googleProfile && GOOGLE_AUTH_ENABLED && (
                 <>
                   <div className="flex items-center gap-3 !mt-5" aria-hidden="true">

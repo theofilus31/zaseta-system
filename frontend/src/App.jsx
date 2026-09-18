@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import LandingPage from './pages/LandingPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx';
+import TermsOfServicePage from './pages/TermsOfServicePage.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import TenantLogin from './pages/TenantLogin.jsx';
@@ -84,6 +86,10 @@ export default function App() {
 
       {/* Publik — halaman harga, ditautkan dari NavBar/Footer LandingPage */}
       <Route path="/harga" element={<PricingPage />} />
+
+      {/* Publik — ditautkan dari Footer & halaman Daftar */}
+      <Route path="/kebijakan-privasi" element={<PrivacyPolicyPage />} />
+      <Route path="/syarat-ketentuan" element={<TermsOfServicePage />} />
 
       {/* Publik — tautan khusus dibagikan ke karyawan tanpa akun aplikasi
           supaya mereka bisa mengajukan permintaan aset sendiri */}
