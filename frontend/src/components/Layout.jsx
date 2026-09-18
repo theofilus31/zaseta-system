@@ -1,15 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import Sidebar, { SidebarDrawer, navItems } from './layout/Sidebar.jsx';
-import Topbar from './layout/Topbar.jsx';
+import { Outlet, useLocation } from 'react-router-dom';
+import Sidebar from './layout/Sidebar.jsx';
+import TabBar from './layout/TabBar.jsx';
 import BottomTabBar from './layout/BottomTabBar.jsx';
 import ErrorToast from './layout/ErrorToast.jsx';
 import ZecodeWidget from './zecode/ZecodeWidget.jsx';
+import { cn } from '../utils/cn.js';
+import { SidebarProvider, useSidebar } from './ui/Sidebar.jsx';
+import { TabsProvider, useTabs } from '../context/TabsContext.jsx';
+import { LayoutWidthProvider } from '../context/LayoutWidthContext.jsx';
 
-export default function Layout({ children, width = 'default' }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const location = useLocation();
-
+/**
+ * Dipasang SATU KALI membungkus <Outlet/> di App.jsx (bukan lagi oleh
+ * masing-masing halaman) — supaya sidebar & tab ala Chrome tetap satu
+ * instance yang sama selagi berpindah-pindah halaman, bukan dibongkar-pasang
+ * ulang setiap klik (itu justru yang membuat isi tab-nya hilang lagi:
+ * TabsProvider ikut ter-unmount sebelum sempat menyimpan perubahan). Halaman
+ * yang butuh lebar panel selain bawaan memanggil useLayoutWidth() sendiri,
+ * lihat context/LayoutWidthContext.jsx.
+ */
+export default function Layout() {
   /* Kunci gulungan dokumen selama kerangka ini terpasang, lalu lepaskan lagi
      saat berpindah ke halaman tanpa kerangka (Masuk / Pindai QR publik). */
   useEffect(() => {
@@ -17,21 +27,31 @@ export default function Layout({ children, width = 'default' }) {
     return () => document.documentElement.classList.remove('app-shell-locked');
   }, []);
 
-  /* Judul di Topbar diambil dari menu yang cocok dengan URL sekarang.
-     Dulu ini membaca `window.location.pathname` langsung — nilainya tidak ikut
-     berubah saat navigasi antar halaman karena React tidak me-render ulang
-     komponen ini. `useLocation()` memastikan judulnya selalu ikut berpindah. */
-  const activeNav = navItems.find((item) => location.pathname.startsWith(item.to));
+  const [width, setWidth] = useState('default');
 
-  /* Tombol Kembali hanya relevan di halaman yang TIDAK punya entri sidebar —
-     detail aset, form tambah/ubah, cetak QR, profil. Di halaman yang sudah
-     ada menunya (Dasbor, Daftar Aset, dst.) tombol itu cuma jadi jalan
-     memutar, karena menu sidebar-nya sendiri sudah jadi jalan langsung.
+  return (
+    <SidebarProvider>
+      <TabsProvider>
+        <LayoutWidthProvider setWidth={setWidth}>
+          <LayoutShell width={width} />
+        </LayoutWidthProvider>
+      </TabsProvider>
+    </SidebarProvider>
+  );
+}
 
-     Perbandingannya harus PERSIS, bukan startsWith: "/assets/12" berawalan
-     sama dengan menu "/assets", padahal halaman detail justru salah satu
-     tempat yang paling butuh tombol Kembali. */
-  const isSidebarPage = navItems.some((item) => item.to === location.pathname);
+/* Terpisah dari Layout supaya bisa memakai useSidebar()/useTabs() — kedua
+   hook itu hanya boleh dipanggil di dalam pohon provider masing-masing,
+   sedangkan Layout sendiri adalah yang memasangnya. */
+function LayoutShell({ width }) {
+  const { toggleSidebar } = useSidebar();
+  const { tabs, activeTabId } = useTabs();
+  const location = useLocation();
+
+  /* Sudut kiri-atas panel konten dibiarkan siku HANYA saat tab pertama
+     aktif — supaya menyatu rapi dengan sudut kiri-bawah sidebar, persis
+     detail visual komponen aslinya. */
+  const activeTabIndex = tabs.findIndex((t) => t.id === activeTabId);
 
   const maxWidth = {
     default: 'max-w-[1400px]',
@@ -43,35 +63,48 @@ export default function Layout({ children, width = 'default' }) {
     /* h-dvh, bukan h-screen: di peramban ponsel 100vh menghitung tinggi
        layar TERMASUK bilah alamat yang bisa menyusut, sehingga kerangka jadi
        lebih tinggi dari area yang benar-benar terlihat.
-       overflow-hidden mengunci dokumen: yang boleh menggulung hanya <main>. */
+       overflow-hidden mengunci dokumen: yang boleh menggulung hanya panel
+       konten di bawah. */
     <div className="h-dvh overflow-hidden bg-ink-50 flex">
 
-      {/* Sidebar tetap di layar lebar */}
-      <aside className="hidden lg:flex w-64 shrink-0">
-        <Sidebar />
-      </aside>
-
-      {/* Laci sidebar di layar sempit */}
-      <SidebarDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      {/* Satu instance saja — primitifnya sendiri yang memilih render sebagai
+          kolom tetap (layar lebar) atau laci mengambang (layar sempit). */}
+      <Sidebar />
 
       {/* Area konten utama */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        <Topbar
-          title={activeNav?.label || ''}
-          canGoBack={!isSidebarPage}
-          onMenuClick={() => setDrawerOpen(true)}
-        />
+        <TabBar />
 
-        {/* overscroll-contain menghentikan "scroll chaining": tanpa ini, begitu
-            gulungan di sini mentok di ujung atas/bawah, sisanya diteruskan ke
-            dokumen dan seluruh kerangka aplikasi ikut bergeser. */}
-        <main className="flex-1 overflow-y-auto overscroll-contain scrollbar-slim pb-20 lg:pb-0">
-          <div className={`${maxWidth} mx-auto px-4 sm:px-6 py-5 sm:py-7`}>
-            {children}
+        {/* Panel konten mengambang dengan sudut membulat — tab yang aktif
+            "menyatu" ke sini lewat lengkungan penutup di ChromeTab
+            (TabBar.jsx). Tidak ada tombol Kembali terpisah lagi: sistem tab
+            menggantikannya — buka lagi menu sidebar yang sesuai, atau tutup
+            tabnya, untuk "kembali". Perubahan belum tersimpan pada form
+            tetap dijaga lewat tombol Batal & peringatan tutup tab/muat
+            ulang (lihat UnsavedChangesContext) — jalur itu tidak berubah. */}
+        <main className="flex-1 overflow-hidden bg-ink-50 lg:pb-3 lg:pr-3">
+          <div
+            /* key={pathname} — sengaja MEMAKSA elemen ini (dan <Outlet/> di
+               dalamnya) dipasang ulang tiap pindah halaman, supaya (a) posisi
+               gulir selalu kembali ke atas dan (b) halaman itu sendiri tetap
+               selalu mulai dari awal seperti sebelumnya (dulu ini otomatis
+               terjadi karena SELURUH Layout ikut dibongkar-pasang per
+               halaman). Yang TIDAK ikut terkena — sengaja — adalah sidebar,
+               TabBar, dan provider di atasnya. */
+            key={location.pathname}
+            className={cn(
+              'h-full overflow-y-auto overscroll-contain scrollbar-slim bg-white pb-20 lg:pb-0',
+              'lg:rounded-br-3xl lg:rounded-bl-3xl lg:rounded-tr-3xl',
+              activeTabIndex !== 0 && 'lg:rounded-tl-3xl'
+            )}
+          >
+            <div className={`${maxWidth} mx-auto px-4 sm:px-6 py-5 sm:py-7`}>
+              <Outlet />
+            </div>
           </div>
         </main>
 
-        <BottomTabBar onMoreClick={() => setDrawerOpen(true)} />
+        <BottomTabBar onMoreClick={toggleSidebar} />
       </div>
 
       {/* Notifikasi mengambang di pojok kanan atas */}

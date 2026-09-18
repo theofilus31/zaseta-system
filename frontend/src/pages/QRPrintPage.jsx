@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import QrLabelDesign from '../components/assets/QrLabelDesign.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -21,10 +20,10 @@ export default function QRPrintPage() {
 
   if (!qr) {
     return (
-      <Layout>
+      <>
         <Skeleton className="h-7 w-64 mb-6" />
         <Card><Skeleton className="h-64 w-full" /></Card>
-      </Layout>
+      </>
     );
   }
 
@@ -32,7 +31,7 @@ export default function QRPrintPage() {
   const previewScale = 2.2;
 
   return (
-    <Layout>
+    <>
       {/* Saat mencetak, hanya area label yang ditampilkan — seluruh kerangka
           aplikasi disembunyikan agar tidak ikut tercetak. */}
       <style>{`
@@ -100,6 +99,6 @@ export default function QRPrintPage() {
         Pastikan skala printer diatur ke <strong className="text-ink-600">100% (ukuran asli)</strong> —
         opsi “fit to page” akan membuat ukuran label meleset.
       </p>
-    </Layout>
+    </>
   );
 }

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -8,7 +7,7 @@ import PageHeader from '../components/ui/PageHeader.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import StatCard from '../components/ui/StatCard.jsx';
 import { Skeleton, SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { SelectField } from '../components/ui/Form.jsx';
+import { SearchableSelect, DateField } from '../components/ui/Form.jsx';
 import { todayLocal as today } from '../utils/dateLocal.js';
 
 /**
@@ -82,7 +81,7 @@ export default function DepreciationReportPage() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         title="Laporan Penyusutan"
         description="Nilai buku aset per tanggal tertentu, dipecah per departemen."
@@ -96,17 +95,14 @@ export default function DepreciationReportPage() {
       <Card className="mb-5">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <div className="flex-1 sm:max-w-[220px]">
-            <label className="label">Per Tanggal</label>
-            <input
-              type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
-              className="field"
-            />
+            <DateField label="Per Tanggal" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
           </div>
           <div className="flex-1 sm:max-w-[280px]">
-            <SelectField label="Departemen" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-              <option value="">Semua departemen</option>
-              {departments.map((d) => <option key={d.id} value={d.id}>{d.code} — {d.name}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Departemen" value={departmentId} onChange={setDepartmentId}
+              options={departments} getOptionLabel={(d) => `${d.code} — ${d.name}`}
+              placeholder="Cari departemen…" emptyLabel="Semua departemen"
+            />
           </div>
           <p className="text-xs text-ink-400 pb-2.5 sm:pb-0">
             Aset yang dibeli setelah tanggal ini, atau sudah dilepas sebelum tanggal ini, tidak ikut dihitung.
@@ -195,6 +191,6 @@ export default function DepreciationReportPage() {
           </Card>
         </>
       )}
-    </Layout>
+    </>
   );
 }

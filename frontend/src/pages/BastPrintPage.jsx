@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useBranding, BrandLogo } from '../context/BrandingContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
+import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 import Card from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
@@ -42,6 +42,10 @@ export default function BastPrintPage() {
   const [bast, setBast] = useState(null);
   const [error, setError] = useState('');
 
+  /* Hanya dokumen yang jadi terisi (keadaan sukses) yang butuh panel
+     sempit — keadaan galat/memuat tetap lebar bawaan. */
+  useLayoutWidth(bast ? 'narrow' : 'default');
+
   useEffect(() => {
     setBast(null);
     setError('');
@@ -56,22 +60,22 @@ export default function BastPrintPage() {
 
   if (error) {
     return (
-      <Layout>
+      <>
         <PageHeader backTo={`/assets`} backLabel="Daftar Aset" title="Berita Acara Serah Terima" />
         <Card className="text-center py-10">
           <i className="fas fa-triangle-exclamation text-2xl text-danger-400 mb-3" aria-hidden="true" />
           <p className="text-sm text-ink-600">{error}</p>
         </Card>
-      </Layout>
+      </>
     );
   }
 
   if (!bast) {
     return (
-      <Layout>
+      <>
         <Skeleton className="h-7 w-64 mb-6" />
         <Card><Skeleton className="h-[600px] w-full" /></Card>
-      </Layout>
+      </>
     );
   }
 
@@ -80,7 +84,7 @@ export default function BastPrintPage() {
   const petugas = type === 'serah' ? (bast.assignedByName || user?.name) : (bast.returnedByName || user?.name);
 
   return (
-    <Layout width="narrow">
+    <>
       <style>{`
         @media print {
           @page { size: A4; margin: 1.6cm; }
@@ -119,7 +123,7 @@ export default function BastPrintPage() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-[11px] text-ink-400 uppercase tracking-wide">No. Dokumen</p>
+            <p className="text-[11px] text-ink-400 uppercase tracking-wide">Nomor Dokumen</p>
             <p className="font-mono text-sm font-semibold text-ink-800">{bast.docNo}</p>
           </div>
         </div>
@@ -205,7 +209,7 @@ export default function BastPrintPage() {
       <p className="print-hide text-center text-xs text-ink-400 mt-4 leading-relaxed">
         Nomor dokumen dibuat sekali dan tersimpan — mencetak ulang halaman ini menunjukkan nomor yang sama.
       </p>
-    </Layout>
+    </>
   );
 }
 

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -48,7 +47,7 @@ export default function CategoryManagement() {
       load();
       pushSuccess(`Kode barang "${category.name}" dihapus.`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal menghapus kode barang/aset.');
+      pushError(err.response?.data?.message || 'Gagal menghapus kode barang/aset.');
     }
   }
 
@@ -73,9 +72,9 @@ export default function CategoryManagement() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Master Data"
+        eyebrow="Data Acuan"
         title="Kode Barang/Aset"
         description="Kelompok barang yang jadi bagian ketiga dari kode aset — misalnya LAPTOP pada HO/LAPTOP/0001."
         actions={
@@ -201,6 +200,6 @@ export default function CategoryManagement() {
           onClose={() => setShowImport(false)}
         />
       )}
-    </Layout>
+    </>
   );
 }

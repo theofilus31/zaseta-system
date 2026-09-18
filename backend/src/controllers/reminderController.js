@@ -46,8 +46,8 @@ const SELECT_WITH_USER = `
 const listReminders = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const [rows] = await pool.query(
-    `${SELECT_WITH_USER} WHERE r.asset_id = :id ORDER BY r.is_active DESC, r.reminder_date ASC`,
-    { id }
+    `${SELECT_WITH_USER} WHERE r.asset_id = :id AND r.tenant_id = :tenantId ORDER BY r.is_active DESC, r.reminder_date ASC`,
+    { id, tenantId: req.user.tenant_id }
   );
   res.json(rows.map(toItem));
 });
@@ -56,18 +56,20 @@ const listReminders = asyncHandler(async (req, res) => {
 const createReminder = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { title, reminderDate, recurrence = 'none', notes } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!String(title || '').trim()) return res.status(400).json({ message: 'Judul pengingat wajib diisi.' });
   if (!reminderDate) return res.status(400).json({ message: 'Tanggal pengingat wajib diisi.' });
   if (!RECURRENCE.includes(recurrence)) return res.status(400).json({ message: 'Pengulangan tidak dikenal.' });
 
-  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND deleted_at IS NULL`, { id });
+  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL`, { id, tenantId });
   if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
   const [result] = await pool.query(
-    `INSERT INTO asset_reminders (asset_id, title, reminder_date, recurrence, notes, created_by)
-     VALUES (:id, :title, :reminderDate, :recurrence, :notes, :userId)`,
-    { id, title: title.trim(), reminderDate, recurrence, notes: notes || null, userId: req.user.id }
+    `INSERT INTO asset_reminders (tenant_id, asset_id, title, reminder_date, recurrence, notes, created_by)
+     VALUES (:tenantId, :id, :title, :reminderDate, :recurrence, :notes, :userId)
+     RETURNING id`,
+    { tenantId, id, title: title.trim(), reminderDate, recurrence, notes: notes || null, userId: req.user.id }
   );
 
   await logAudit({
@@ -82,16 +84,17 @@ const createReminder = asyncHandler(async (req, res) => {
 // POST /api/assets/:id/reminders/:reminderId/complete
 const completeReminder = asyncHandler(async (req, res) => {
   const { id, reminderId } = req.params;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
-    `SELECT * FROM asset_reminders WHERE id = :reminderId AND asset_id = :id`, { reminderId, id }
+    `SELECT * FROM asset_reminders WHERE id = :reminderId AND asset_id = :id AND tenant_id = :tenantId`, { reminderId, id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Pengingat tidak ditemukan.' });
   if (!row.is_active) return res.status(400).json({ message: 'Pengingat ini sudah tidak aktif.' });
 
   if (row.recurrence === 'none') {
-    await pool.query(`UPDATE asset_reminders SET is_active = FALSE WHERE id = :reminderId`, { reminderId });
+    await pool.query(`UPDATE asset_reminders SET is_active = FALSE WHERE id = :reminderId AND tenant_id = :tenantId`, { reminderId, tenantId });
   } else {
     /* Dimajukan dari GREATEST(tanggal lama, hari ini) — kalau pengingatnya
        sudah lewat berbulan-bulan sebelum ditandai selesai, periode
@@ -100,9 +103,9 @@ const completeReminder = asyncHandler(async (req, res) => {
     const months = RECURRENCE_MONTHS[row.recurrence];
     await pool.query(
       `UPDATE asset_reminders
-       SET reminder_date = DATE_ADD(GREATEST(reminder_date, CURDATE()), INTERVAL :months MONTH)
-       WHERE id = :reminderId`,
-      { reminderId, months }
+       SET reminder_date = GREATEST(reminder_date, CURRENT_DATE) + make_interval(months => :months)
+       WHERE id = :reminderId AND tenant_id = :tenantId`,
+      { reminderId, months, tenantId }
     );
   }
 
@@ -123,14 +126,15 @@ const completeReminder = asyncHandler(async (req, res) => {
 // DELETE /api/assets/:id/reminders/:reminderId
 const deleteReminder = asyncHandler(async (req, res) => {
   const { id, reminderId } = req.params;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
-    `SELECT * FROM asset_reminders WHERE id = :reminderId AND asset_id = :id`, { reminderId, id }
+    `SELECT * FROM asset_reminders WHERE id = :reminderId AND asset_id = :id AND tenant_id = :tenantId`, { reminderId, id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Pengingat tidak ditemukan.' });
 
-  await pool.query(`DELETE FROM asset_reminders WHERE id = :reminderId`, { reminderId });
+  await pool.query(`DELETE FROM asset_reminders WHERE id = :reminderId AND tenant_id = :tenantId`, { reminderId, tenantId });
 
   await logAudit({
     userId: req.user.id, action: 'delete', entityType: 'asset_reminder', entityId: reminderId,

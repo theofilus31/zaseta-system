@@ -53,9 +53,9 @@ const SELECT_WITH_USERS = `
 const listMaintenances = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const [rows] = await pool.query(
-    `${SELECT_WITH_USERS} WHERE m.asset_id = :id
+    `${SELECT_WITH_USERS} WHERE m.asset_id = :id AND m.tenant_id = :tenantId
      ORDER BY (m.status = 'dijadwalkan') DESC, m.scheduled_date DESC`,
-    { id }
+    { id, tenantId: req.user.tenant_id }
   );
   res.json(rows.map(toItem));
 });
@@ -64,19 +64,21 @@ const listMaintenances = asyncHandler(async (req, res) => {
 const createMaintenance = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { maintenanceType = 'preventive', title, description, scheduledDate, vendor, cost } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!String(title || '').trim()) return res.status(400).json({ message: 'Judul pemeliharaan wajib diisi.' });
   if (!scheduledDate) return res.status(400).json({ message: 'Tanggal jadwal wajib diisi.' });
   if (!TYPES.includes(maintenanceType)) return res.status(400).json({ message: 'Jenis pemeliharaan tidak dikenal.' });
 
-  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND deleted_at IS NULL`, { id });
+  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL`, { id, tenantId });
   if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
   const [result] = await pool.query(
-    `INSERT INTO asset_maintenances (asset_id, maintenance_type, title, description, scheduled_date, vendor, cost, created_by)
-     VALUES (:id, :maintenanceType, :title, :description, :scheduledDate, :vendor, :cost, :userId)`,
+    `INSERT INTO asset_maintenances (tenant_id, asset_id, maintenance_type, title, description, scheduled_date, vendor, cost, created_by)
+     VALUES (:tenantId, :id, :maintenanceType, :title, :description, :scheduledDate, :vendor, :cost, :userId)
+     RETURNING id`,
     {
-      id, maintenanceType, title: title.trim(), description: description || null,
+      tenantId, id, maintenanceType, title: title.trim(), description: description || null,
       scheduledDate, vendor: vendor || null, cost: cost || null, userId: req.user.id,
     }
   );
@@ -94,9 +96,10 @@ const createMaintenance = asyncHandler(async (req, res) => {
 const completeMaintenance = asyncHandler(async (req, res) => {
   const { id, maintenanceId } = req.params;
   const { completedDate, vendor, cost, resultNote } = req.body;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
-    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id`, { maintenanceId, id }
+    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id AND tenant_id = :tenantId`, { maintenanceId, id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Jadwal pemeliharaan tidak ditemukan.' });
@@ -108,9 +111,10 @@ const completeMaintenance = asyncHandler(async (req, res) => {
     `UPDATE asset_maintenances
      SET status = 'selesai', completed_date = :completedDate, completed_by = :userId,
          vendor = COALESCE(:vendor, vendor), cost = :cost, result_note = :resultNote
-     WHERE id = :maintenanceId`,
+     WHERE id = :maintenanceId AND tenant_id = :tenantId`,
     {
       maintenanceId,
+      tenantId,
       completedDate: completedDate || todayLocal(),
       userId: req.user.id,
       vendor: vendor || null,
@@ -131,9 +135,10 @@ const completeMaintenance = asyncHandler(async (req, res) => {
 // PUT /api/assets/:id/maintenances/:maintenanceId/cancel
 const cancelMaintenance = asyncHandler(async (req, res) => {
   const { id, maintenanceId } = req.params;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
-    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id`, { maintenanceId, id }
+    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id AND tenant_id = :tenantId`, { maintenanceId, id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Jadwal pemeliharaan tidak ditemukan.' });
@@ -141,7 +146,7 @@ const cancelMaintenance = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: `Jadwal ini sudah berstatus "${row.status}", tidak bisa dibatalkan.` });
   }
 
-  await pool.query(`UPDATE asset_maintenances SET status = 'dibatalkan' WHERE id = :maintenanceId`, { maintenanceId });
+  await pool.query(`UPDATE asset_maintenances SET status = 'dibatalkan' WHERE id = :maintenanceId AND tenant_id = :tenantId`, { maintenanceId, tenantId });
 
   await logAudit({
     userId: req.user.id, action: 'update', entityType: 'asset_maintenance', entityId: maintenanceId,
@@ -154,14 +159,15 @@ const cancelMaintenance = asyncHandler(async (req, res) => {
 // DELETE /api/assets/:id/maintenances/:maintenanceId
 const deleteMaintenance = asyncHandler(async (req, res) => {
   const { id, maintenanceId } = req.params;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
-    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id`, { maintenanceId, id }
+    `SELECT * FROM asset_maintenances WHERE id = :maintenanceId AND asset_id = :id AND tenant_id = :tenantId`, { maintenanceId, id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Jadwal pemeliharaan tidak ditemukan.' });
 
-  await pool.query(`DELETE FROM asset_maintenances WHERE id = :maintenanceId`, { maintenanceId });
+  await pool.query(`DELETE FROM asset_maintenances WHERE id = :maintenanceId AND tenant_id = :tenantId`, { maintenanceId, tenantId });
 
   await logAudit({
     userId: req.user.id, action: 'delete', entityType: 'asset_maintenance', entityId: maintenanceId,

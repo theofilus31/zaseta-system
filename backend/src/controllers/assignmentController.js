@@ -39,15 +39,15 @@ const listAssignments = asyncHandler(async (req, res) => {
   const { assetId, holder = '', activeOnly, page = 1, limit = 25 } = req.query;
   const offset = (Number(page) - 1) * Number(limit);
 
-  const conditions = ['a.deleted_at IS NULL'];
-  const params = {};
+  const conditions = ['a.deleted_at IS NULL', 'a.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
 
   if (assetId) {
     conditions.push('asg.asset_id = :assetId');
     params.assetId = assetId;
   }
   if (holder) {
-    conditions.push('(asg.holder_name LIKE :holderLike OR asg.department LIKE :holderLike)');
+    conditions.push('(asg.holder_name ILIKE :holderLike OR asg.department ILIKE :holderLike)');
     params.holderLike = `%${holder}%`;
   }
   if (activeOnly === 'true') {
@@ -111,7 +111,8 @@ const listAssignments = asyncHandler(async (req, res) => {
  * tanpa `conn` sama sekali (dari checkOut() di bawah), yang akan membuka dan
  * mengurus transaksinya sendiri.
  */
-async function performCheckOut({ assetId, holderName, holderContact, department, assignedAt, assignNote, userId, ip, conn: externalConn }) {
+async function performCheckOut({ tenantId, assetId, holderName, holderContact, department, assignedAt, assignNote, userId, ip, conn: externalConn }) {
+  if (!tenantId) { const err = new Error('Tenant tidak diketahui.'); err.status = 400; throw err; }
   if (!assetId || !holderName) {
     const err = new Error('assetId dan nama pemegang wajib diisi.'); err.status = 400; throw err;
   }
@@ -123,8 +124,8 @@ async function performCheckOut({ assetId, holderName, holderContact, department,
     if (ownsTransaction) await conn.beginTransaction();
 
     const [assetRows] = await conn.query(
-      `SELECT id, name, status FROM assets WHERE id = :assetId AND deleted_at IS NULL FOR UPDATE`,
-      { assetId }
+      `SELECT id, name, status FROM assets WHERE id = :assetId AND tenant_id = :tenantId AND deleted_at IS NULL FOR UPDATE`,
+      { assetId, tenantId }
     );
     const asset = assetRows[0];
     if (!asset) { const err = new Error('Aset tidak ditemukan.'); err.status = 404; throw err; }
@@ -161,7 +162,8 @@ async function performCheckOut({ assetId, holderName, holderContact, department,
     const [result] = await conn.query(
       `INSERT INTO asset_assignments
          (asset_id, holder_name, holder_contact, department, assigned_at, assigned_by, assign_note)
-       VALUES (:assetId, :holderName, :holderContact, :department, :assignedAt, :userId, :assignNote)`,
+       VALUES (:assetId, :holderName, :holderContact, :department, :assignedAt, :userId, :assignNote)
+       RETURNING id`,
       {
         assetId,
         holderName: holderName.trim(),
@@ -215,6 +217,7 @@ const checkOut = asyncHandler(async (req, res) => {
   const { assetId, holderName, holderContact, department, assignedAt, assignNote } = req.body;
 
   const { assignmentId } = await performCheckOut({
+    tenantId: req.user.tenant_id,
     assetId, holderName, holderContact, department, assignedAt, assignNote,
     userId: req.user.id, ip: req.ip,
   });
@@ -238,12 +241,18 @@ const checkIn = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Kondisi pengembalian tidak valid.' });
   }
 
+  const tenantId = req.user.tenant_id;
   const conn = await pool.getConnection();
   let assignment, targetStatus;
   try {
     await conn.beginTransaction();
 
-    const [rows] = await conn.query(`SELECT * FROM asset_assignments WHERE id = :id FOR UPDATE`, { id });
+    const [rows] = await conn.query(
+      `SELECT asg.* FROM asset_assignments asg
+       JOIN assets a ON a.id = asg.asset_id
+       WHERE asg.id = :id AND a.tenant_id = :tenantId FOR UPDATE`,
+      { id, tenantId }
+    );
     assignment = rows[0];
     if (!assignment) {
       await conn.rollback();
@@ -324,13 +333,15 @@ const checkIn = asyncHandler(async (req, res) => {
 // GET /api/assignments/holders — rekap per pemegang, untuk melihat siapa memegang apa
 const listHolders = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT holder_name, department,
+    `SELECT asg.holder_name, asg.department,
             COUNT(*) AS total_active,
-            MIN(assigned_at) AS since
-     FROM asset_assignments
-     WHERE returned_at IS NULL
-     GROUP BY holder_name, department
-     ORDER BY total_active DESC, holder_name ASC`
+            MIN(asg.assigned_at) AS since
+     FROM asset_assignments asg
+     JOIN assets a ON a.id = asg.asset_id
+     WHERE asg.returned_at IS NULL AND a.tenant_id = :tenantId
+     GROUP BY asg.holder_name, asg.department
+     ORDER BY total_active DESC, holder_name ASC`,
+    { tenantId: req.user.tenant_id }
   );
   res.json(rows.map((r) => ({ ...r, total_active: Number(r.total_active) })));
 });
@@ -351,15 +362,15 @@ const listHolders = asyncHandler(async (req, res) => {
 
 /** Nomor berurut per tahun: BAST/2026/0001. Dihitung dari KEDUA kolom nomor
  * (serah & kembali) karena keduanya berbagi satu urutan penomoran. */
-async function generateBastCode() {
+async function generateBastCode(tenantId) {
   const year = new Date().getFullYear();
   const prefix = `BAST/${year}/`;
 
   const [rows] = await pool.query(
-    `SELECT doc_no AS code FROM asset_assignments WHERE doc_no LIKE :prefix
+    `SELECT asg.doc_no AS code FROM asset_assignments asg JOIN assets a ON a.id = asg.asset_id WHERE a.tenant_id = :tenantId AND asg.doc_no LIKE :prefix
      UNION ALL
-     SELECT return_doc_no AS code FROM asset_assignments WHERE return_doc_no LIKE :prefix`,
-    { prefix: `${prefix}%` }
+     SELECT asg.return_doc_no AS code FROM asset_assignments asg JOIN assets a ON a.id = asg.asset_id WHERE a.tenant_id = :tenantId AND asg.return_doc_no LIKE :prefix`,
+    { tenantId, prefix: `${prefix}%` }
   );
 
   let last = 0;
@@ -379,6 +390,7 @@ const getBast = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Jenis berita acara tidak dikenal.' });
   }
 
+  const tenantId = req.user.tenant_id;
   const [rows] = await pool.query(
     `SELECT asg.*,
             a.asset_code, a.name AS asset_name, a.brand, a.model, a.serial_number, a.condition_status,
@@ -392,8 +404,8 @@ const getBast = asyncHandler(async (req, res) => {
      LEFT JOIN sub_locations sl ON sl.id = a.sub_location_id
      LEFT JOIN users ub ON ub.id = asg.assigned_by
      LEFT JOIN users ur ON ur.id = asg.returned_by
-     WHERE asg.id = :id`,
-    { id }
+     WHERE asg.id = :id AND a.tenant_id = :tenantId`,
+    { id, tenantId }
   );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Data serah terima tidak ditemukan.' });
@@ -408,7 +420,7 @@ const getBast = asyncHandler(async (req, res) => {
   let docNo = row[column];
 
   if (!docNo) {
-    docNo = await generateBastCode();
+    docNo = await generateBastCode(tenantId);
     await pool.query(`UPDATE asset_assignments SET ${column} = :docNo WHERE id = :id`, { docNo, id });
 
     await logAudit({

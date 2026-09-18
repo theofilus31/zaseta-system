@@ -10,10 +10,10 @@ const pool = require('../config/db');
  *
  * @throws {Error} dengan properti `status` terisi (400/404/409) kalau validasi gagal — asyncHandler akan meneruskan ke errorHandler.
  */
-async function buildAssetCode({ locationId, subLocationId, categoryId, manualSequence }) {
+async function buildAssetCode({ tenantId, locationId, subLocationId, categoryId, manualSequence }) {
   const [locRows] = await pool.query(
-    `SELECT code FROM locations WHERE id = :id AND is_active = TRUE`,
-    { id: locationId }
+    `SELECT code FROM locations WHERE id = :id AND tenant_id = :tenantId AND is_active = TRUE`,
+    { id: locationId, tenantId }
   );
   if (!locRows[0]) {
     const err = new Error('Lokasi tidak valid atau sudah tidak aktif.');
@@ -24,8 +24,8 @@ async function buildAssetCode({ locationId, subLocationId, categoryId, manualSeq
   let subLocationCode = null;
   if (subLocationId) {
     const [subRows] = await pool.query(
-      `SELECT code FROM sub_locations WHERE id = :id AND location_id = :locationId AND is_active = TRUE`,
-      { id: subLocationId, locationId }
+      `SELECT code FROM sub_locations WHERE id = :id AND location_id = :locationId AND tenant_id = :tenantId AND is_active = TRUE`,
+      { id: subLocationId, locationId, tenantId }
     );
     if (!subRows[0]) {
       const err = new Error('Sub lokasi tidak valid untuk lokasi yang dipilih.');
@@ -35,7 +35,7 @@ async function buildAssetCode({ locationId, subLocationId, categoryId, manualSeq
     subLocationCode = subRows[0].code;
   }
 
-  const [catRows] = await pool.query(`SELECT slug FROM asset_categories WHERE id = :id`, { id: categoryId });
+  const [catRows] = await pool.query(`SELECT slug FROM asset_categories WHERE id = :id AND tenant_id = :tenantId`, { id: categoryId, tenantId });
   if (!catRows[0]) {
     const err = new Error('Kategori tidak valid.');
     err.status = 400;
@@ -53,7 +53,7 @@ async function buildAssetCode({ locationId, subLocationId, categoryId, manualSeq
       err.status = 400;
       throw err;
     }
-    const [dupeRows] = await pool.query(`SELECT id, asset_code FROM assets WHERE sequence_no = :sequenceNo`, { sequenceNo });
+    const [dupeRows] = await pool.query(`SELECT id, asset_code FROM assets WHERE tenant_id = :tenantId AND sequence_no = :sequenceNo`, { tenantId, sequenceNo });
     if (dupeRows[0]) {
       const err = new Error(`Nomor urut ${sequenceNo} sudah dipakai aset "${dupeRows[0].asset_code}". Kosongkan untuk generate otomatis, atau pilih nomor lain.`);
       err.status = 409;
@@ -63,7 +63,7 @@ async function buildAssetCode({ locationId, subLocationId, categoryId, manualSeq
     // Cari nomor urut terkecil yang belum pernah dipakai (mengisi celah/gap terlebih dahulu),
     // bukan sekadar melanjutkan dari nomor tertinggi. Contoh: kalau yang sudah dipakai {1, 4},
     // auto-generate berikutnya harus menghasilkan 2, lalu 3, baru 5 (bukan langsung 5).
-    const [rows] = await pool.query(`SELECT sequence_no FROM assets WHERE sequence_no IS NOT NULL ORDER BY sequence_no ASC`);
+    const [rows] = await pool.query(`SELECT sequence_no FROM assets WHERE tenant_id = :tenantId AND sequence_no IS NOT NULL ORDER BY sequence_no ASC`, { tenantId });
     const usedNumbers = new Set(rows.map((r) => r.sequence_no));
     let candidate = 1;
     while (usedNumbers.has(candidate)) candidate++;

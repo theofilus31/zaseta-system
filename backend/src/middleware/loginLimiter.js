@@ -1,4 +1,5 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { isIpWhitelisted } = require('../utils/ipWhitelist');
 
 /**
  * ============================================================================
@@ -30,6 +31,9 @@ const loginLimiter = rateLimit({
   // gagal yang dihitung, supaya pengguna yang sah tidak pernah terkunci
   // sendiri oleh pemakaian normal.
   skipSuccessfulRequests: true,
+  // Alamat IP di daftar putih (menu Daftar Putih IP, panel admin platform)
+  // lewat semua pembatas laju sama sekali -- lihat utils/ipWhitelist.js.
+  skip: (req) => isIpWhitelisted(req.ip),
   handler: (req, res) => {
     res.status(429).json({
       message: 'Terlalu banyak percobaan masuk yang gagal. Coba lagi dalam beberapa menit.',

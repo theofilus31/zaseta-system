@@ -1,4 +1,4 @@
-const { ollamaChat, extractJson } = require('../utils/ollamaClient');
+const { geminiChat, extractJson } = require('../utils/geminiClient');
 const { userCan } = require('../middleware/auth');
 const zecodeData = require('./zecodeData');
 
@@ -49,7 +49,7 @@ const INTENT_DESCRIPTION = {
 function buildSystemPrompt(allowedIntents) {
   const catalog = allowedIntents.map((key) => `- "${key}": ${INTENT_DESCRIPTION[key]}`).join('\n');
 
-  return `Kamu adalah Zecode, asisten AI internal untuk sistem inventaris aset perusahaan. Kamu berjalan LOKAL di server perusahaan sendiri, bukan layanan luar.
+  return `Kamu adalah Zecode, asisten AI internal untuk sistem inventaris aset perusahaan.
 
 Tugasmu HANYA SATU: baca pesan terakhir pengguna, lalu putuskan SATU intent dari daftar berikut yang paling cocok, dan keluarkan HANYA JSON (tidak ada teks lain sebelum/sesudahnya):
 
@@ -70,10 +70,10 @@ Aturan penting:
 /** Basa-basi/sapaan dijawab model secara langsung (bukan lewat data) — ini aman karena tidak menyangkut data sistem. */
 async function directReply(userMessage, kind) {
   const prompt = kind === 'help'
-    ? 'Pengguna bertanya apa yang bisa kamu lakukan. Jawab singkat (maksimal 4 kalimat) dalam Bahasa Indonesia, ramah, sebagai Zecode — asisten AI internal sistem inventaris aset yang berjalan lokal di server perusahaan.'
+    ? 'Pengguna bertanya apa yang bisa kamu lakukan. Jawab singkat (maksimal 4 kalimat) dalam Bahasa Indonesia, ramah, sebagai Zecode — asisten AI internal sistem inventaris aset perusahaan.'
     : 'Balas pesan pengguna secara singkat, ramah, dan natural dalam Bahasa Indonesia, sebagai Zecode — asisten AI internal sistem inventaris aset.';
 
-  const reply = await ollamaChat([
+  const reply = await geminiChat([
     { role: 'system', content: prompt },
     { role: 'user', content: userMessage },
   ], { json: false, temperature: 0.6 });
@@ -102,7 +102,7 @@ async function handleMessage({ userMessage, history, user }) {
     { role: 'user', content: userMessage },
   ];
 
-  const raw = await ollamaChat(messages, { json: true, temperature: 0.1 });
+  const raw = await geminiChat(messages, { json: true, temperature: 0.1 });
   const parsed = extractJson(raw);
 
   const intent = parsed?.intent && fullCatalog.includes(parsed.intent) ? parsed.intent : 'unknown';
@@ -149,7 +149,7 @@ async function handleMessage({ userMessage, history, user }) {
   const handler = zecodeData[intent];
   if (!handler) return { intent: 'unknown', text: 'Maaf, aku belum bisa membantu untuk itu.' };
 
-  const result = await handler(params);
+  const result = await handler(params, user.tenant_id);
   return { intent, text: result.text, link: result.link };
 }
 

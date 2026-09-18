@@ -7,7 +7,7 @@ import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
 import { Badge } from '../ui/StatusBadge.jsx';
-import { TextField, SelectField, TextareaField, FormError } from '../ui/Form.jsx';
+import { TextField, SearchableSelect, DateField, TextareaField, FormError } from '../ui/Form.jsx';
 import { Skeleton } from '../ui/Skeleton.jsx';
 import { todayLocal as today } from '../../utils/dateLocal.js';
 
@@ -249,20 +249,24 @@ function CreateReminderModal({ assetId, onClose, onCreated }) {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <TextField
-            label="Tanggal Jatuh Tempo" name="reminderDate" type="date" required
+          <DateField
+            label="Tanggal Jatuh Tempo" name="reminderDate" required
             value={form.reminderDate} onChange={change}
           />
-          <SelectField
-            label="Pengulangan" name="recurrence"
-            value={form.recurrence} onChange={change}
+          <SearchableSelect
+            label="Pengulangan"
+            value={form.recurrence} onChange={(v) => setForm((f) => ({ ...f, recurrence: v }))}
             hint="Ditandai selesai akan menjadwalkan ulang otomatis."
-          >
-            <option value="none">Sekali saja</option>
-            <option value="monthly">Bulanan</option>
-            <option value="quarterly">Triwulanan</option>
-            <option value="yearly">Tahunan</option>
-          </SelectField>
+            clearable={false} searchable={false}
+            options={[
+              { value: 'none', label: 'Sekali saja' },
+              { value: 'monthly', label: 'Bulanan' },
+              { value: 'quarterly', label: 'Triwulanan' },
+              { value: 'yearly', label: 'Tahunan' },
+            ]}
+            getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+            placeholder="Pilih pengulangan…"
+          />
         </div>
 
         <TextareaField

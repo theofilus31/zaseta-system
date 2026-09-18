@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Modal from '../ui/Modal.jsx';
 import Button from '../ui/Button.jsx';
-import { TextField, SelectField, TextareaField, FormError } from '../ui/Form.jsx';
+import { TextField, SearchableSelect, DateField, TextareaField, FormError } from '../ui/Form.jsx';
 import { todayLocal as today } from '../../utils/dateLocal.js';
 
 /**
@@ -78,8 +78,8 @@ export function CheckOutModal({ asset, onConfirm, onClose }) {
           />
         </div>
 
-        <TextField
-          label="Tanggal Serah Terima" name="assignedAt" type="date" required
+        <DateField
+          label="Tanggal Serah Terima" name="assignedAt" required
           value={form.assignedAt} onChange={change}
         />
 
@@ -146,31 +146,39 @@ export function CheckInModal({ asset, assignment, onConfirm, onClose }) {
       }
     >
       <form id="checkin-form" onSubmit={handleSubmit} className="space-y-4">
-        <TextField
-          label="Tanggal Diterima" name="returnedAt" type="date" required
+        <DateField
+          label="Tanggal Diterima" name="returnedAt" required
           value={form.returnedAt} onChange={change}
         />
 
-        <SelectField
-          label="Kondisi Saat Diterima" name="returnCondition"
-          value={form.returnCondition} onChange={change}
+        <SearchableSelect
+          label="Kondisi Saat Diterima"
+          value={form.returnCondition} onChange={(v) => setForm((f) => ({ ...f, returnCondition: v }))}
           hint={conditionChanged
             ? 'Kondisi aset akan diperbarui mengikuti pilihan ini.'
             : 'Periksa fisiknya — ubah kalau ternyata berbeda dari catatan.'}
-        >
-          <option value="baik">Baik</option>
-          <option value="rusak_ringan">Rusak Ringan</option>
-          <option value="rusak_berat">Rusak Berat</option>
-        </SelectField>
+          clearable={false}
+          options={[
+            { value: 'baik', label: 'Baik' },
+            { value: 'rusak_ringan', label: 'Rusak Ringan' },
+            { value: 'rusak_berat', label: 'Rusak Berat' },
+          ]}
+          getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+          placeholder="Cari kondisi…"
+        />
 
-        <SelectField
-          label="Status Setelah Diterima" name="newStatus"
-          value={form.newStatus} onChange={change}
+        <SearchableSelect
+          label="Status Setelah Diterima"
+          value={form.newStatus} onChange={(v) => setForm((f) => ({ ...f, newStatus: v }))}
           hint="Umumnya kembali menganggur, siap dialokasikan ke orang lain."
-        >
-          <option value="idle">Menganggur</option>
-          <option value="dipakai">Dipakai</option>
-        </SelectField>
+          clearable={false}
+          options={[
+            { value: 'idle', label: 'Menganggur' },
+            { value: 'dipakai', label: 'Dipakai' },
+          ]}
+          getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+          placeholder="Cari status…"
+        />
 
         <TextareaField
           label="Catatan Pengembalian" name="returnNote" rows={2}

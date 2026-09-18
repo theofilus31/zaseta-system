@@ -22,7 +22,12 @@ async function authenticate(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(token, process.env.JWT_SECRET);
+    // Algoritma disebutkan eksplisit (bukan cuma dipercaya dari header token
+    // itu sendiri) — tidak ada celah yang bisa dieksploitasi di sini sekarang
+    // (tidak ada kunci asimetris di arsitektur ini), tapi ini praktik baik
+    // standar untuk mencegah kelas serangan "algorithm confusion" kalau
+    // arsitektur otentikasi berubah nanti.
+    payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch (err) {
     return res.status(401).json({ message: 'Token tidak valid atau kedaluwarsa.' });
   }
@@ -30,10 +35,16 @@ async function authenticate(req, res, next) {
   try {
     /* Status, peran, DAN token_version ikut dibaca ulang: akun yang
        dinonaktifkan setelah token terbit harus langsung kehilangan akses,
-       tidak menunggu token kedaluwarsa. */
+       tidak menunggu token kedaluwarsa. tenant_id ikut dibaca dari database
+       (bukan cuma dipercaya dari payload token) supaya perusahaan yang
+       ditangguhkan (tenants.status = 'suspended') bisa langsung diblokir
+       tanpa menunggu semua tokennya kedaluwarsa satu-satu. */
     const [rows] = await pool.query(
-      `SELECT u.id, u.username, u.name, u.email, u.status, u.token_version, r.name AS role
-       FROM users u JOIN roles r ON r.id = u.role_id
+      `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin,
+              r.name AS role, t.status AS tenant_status
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       JOIN tenants t ON t.id = u.tenant_id
        WHERE u.id = :id AND u.deleted_at IS NULL LIMIT 1`,
       { id: payload.id }
     );
@@ -45,6 +56,14 @@ async function authenticate(req, res, next) {
     if (user.status !== 'active') {
       return res.status(403).json({ message: 'Akun Anda dinonaktifkan. Hubungi administrator.' });
     }
+    /* Langganan perusahaan (tenant) ini dihentikan/ditangguhkan — SEMUA
+       penggunanya kehilangan akses seketika, bukan cuma satu akun. Dicek di
+       sini (bukan hanya saat login) supaya penangguhan langsung terasa pada
+       permintaan berikutnya, sama seperti alasan status akun & token_version
+       di atas dan di bawah. */
+    if (user.tenant_status !== 'active' && user.tenant_status !== 'trial') {
+      return res.status(403).json({ message: 'Langganan perusahaan Anda sedang tidak aktif. Hubungi penyedia layanan.' });
+    }
     /* token_version dinaikkan setiap kali kata sandi akun ini diganti (lihat
        profileController & userController) — token yang diterbitkan sebelum
        kenaikan itu langsung ditolak di sini, tanpa menunggu masa berlakunya
@@ -55,7 +74,7 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ message: 'Sesi ini sudah tidak berlaku. Silakan masuk kembali.' });
     }
 
-    req.user = { ...user, permissions: await loadPermissions(user) };
+    req.user = { ...user, is_platform_admin: Boolean(user.is_platform_admin), permissions: await loadPermissions(user) };
     next();
   } catch (err) {
     next(err);
@@ -152,4 +171,22 @@ function requireRole(...allowedRoles) {
   };
 }
 
-module.exports = { authenticate, requirePermission, requireAnyPermission, requireRole, loadPermissions, userCan };
+/**
+ * Menjaga endpoint LINTAS TENANT untuk urusan billing (lihat
+ * migration_billing_phase4.sql) — bukan Fase 5 (super-admin) penuh, cuma
+ * cukup untuk menyetujui/menolak permintaan upgrade paket dari tenant mana
+ * pun. Terpisah dari requirePermission/requireRole karena keduanya berlaku
+ * DI DALAM satu tenant; ini justru menembus batas tenant, jadi sengaja
+ * dibuat penjaga sendiri yang jelas namanya supaya tidak tertukar.
+ */
+function requirePlatformAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Belum terautentikasi.' });
+  }
+  if (!req.user.is_platform_admin) {
+    return res.status(403).json({ message: 'Halaman ini khusus admin platform.' });
+  }
+  next();
+}
+
+module.exports = { authenticate, requirePermission, requireAnyPermission, requireRole, requirePlatformAdmin, loadPermissions, userCan };

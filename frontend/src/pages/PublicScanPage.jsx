@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient.js';
 import { parseSpecDetail } from '../utils/specDetail.js';
-import StatusBadge from '../components/ui/StatusBadge.jsx';
 import { useBranding, BrandLogo } from '../context/BrandingContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import ScanActionPanel from '../components/assets/ScanActionPanel.jsx';
+import AssetTrackerCard from '../components/ui/AssetTrackerCard.jsx';
 
 /**
  * Halaman PUBLIK — dibuka siapa saja yang memindai Kode QR pada label aset,
@@ -21,11 +21,11 @@ function ScanShell({ children }) {
   return (
     <div className="min-h-dvh bg-ink-100 dot-grid flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-8">
           <BrandLogo
             variant="light"
-            className="h-11 w-auto object-contain"
-            fallbackClassName="h-11 w-11 text-lg"
+            className="h-20 w-auto object-contain"
+            fallbackClassName="h-20 w-20 text-3xl"
           />
         </div>
 
@@ -93,6 +93,7 @@ export default function PublicScanPage() {
   const [asset, setAsset] = useState(null);          // tampilan publik
   const [staffAsset, setStaffAsset] = useState(null); // tampilan petugas
   const [error, setError] = useState('');
+  const [showDetail, setShowDetail] = useState(false);
 
   /* Dua jalur pengambilan data untuk satu halaman:
      - petugas yang sudah masuk & berhak melihat aset -> /assets/by-code (data
@@ -166,59 +167,51 @@ export default function PublicScanPage() {
 
   /* ---------- Berhasil ---------- */
   const location = [asset.location_name, asset.sub_location_name].filter(Boolean).join(' · ') || asset.location;
+  const purchaseDate = asset.purchase_date
+    ? new Date(asset.purchase_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
 
   return (
     <ScanShell>
-      <div className="bg-white rounded-2xl border border-ink-200 shadow-raised overflow-hidden">
+      <div className="space-y-4">
+        <AssetTrackerCard
+          status={asset.status}
+          assetName={asset.name}
+          assetCode={asset.asset_code}
+          location={location}
+          date={purchaseDate}
+          qrValue={typeof window !== 'undefined' ? window.location.href : asset.asset_code}
+          expanded={showDetail}
+          onToggleDetail={() => setShowDetail((v) => !v)}
+        />
 
-        {/* Kop berwarna brand — penanda bahwa ini dokumen resmi perusahaan */}
-        <div className="relative bg-gradient-to-br from-brand-600 to-brand-700 px-6 py-6 overflow-hidden">
-          <div
-            className="absolute -top-10 -right-8 h-32 w-32 rounded-full bg-white/10"
-            aria-hidden="true"
-          />
-          <p className="relative text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">
-            Detail Aset
-          </p>
-          <h1 className="relative text-xl font-bold text-white leading-tight mt-1.5 break-words">
-            {asset.name}
-          </h1>
-          <p className="relative text-[13px] font-mono text-white/80 mt-2">{asset.asset_code}</p>
-        </div>
-
-        <div className="px-6 py-5">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">Status</span>
-            <StatusBadge status={asset.status} />
-          </div>
-
-          <dl>
-            <Row label="Kode Barang/Aset" value={asset.category_name} />
-            <Row label="Brand / Model" value={[asset.brand, asset.model].filter(Boolean).join(' / ')} />
-            <Row label="Lokasi" value={location} />
-            <Row label="Vendor" value={asset.vendor} />
-            <Row
-              label="Tanggal Beli"
-              value={asset.purchase_date
-                ? new Date(asset.purchase_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-                : null}
-            />
-            <SpecDetailRow value={asset.spec_detail} />
-          </dl>
-
-          {asset.customFields?.length > 0 && (
-            <div className="mt-5 pt-4 border-t border-ink-200">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">
-                Informasi Tambahan
-              </p>
+        {showDetail && (
+          <div className="bg-white rounded-2xl border border-ink-200 shadow-raised overflow-hidden animate-slide-down">
+            <div className="px-6 py-5">
               <dl>
-                {asset.customFields.map((cf, i) => (
-                  <Row key={i} label={cf.field_label} value={cf.value_text} />
-                ))}
+                <Row label="Kode Barang/Aset" value={asset.category_name} />
+                <Row label="Brand / Model" value={[asset.brand, asset.model].filter(Boolean).join(' / ')} />
+                <Row label="Lokasi" value={location} />
+                <Row label="Vendor" value={asset.vendor} />
+                <Row label="Tanggal Beli" value={purchaseDate} />
+                <SpecDetailRow value={asset.spec_detail} />
               </dl>
+
+              {asset.customFields?.length > 0 && (
+                <div className="mt-5 pt-4 border-t border-ink-200">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">
+                    Informasi Tambahan
+                  </p>
+                  <dl>
+                    {asset.customFields.map((cf, i) => (
+                      <Row key={i} label={cf.field_label} value={cf.value_text} />
+                    ))}
+                  </dl>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </ScanShell>
   );

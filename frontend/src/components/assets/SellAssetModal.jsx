@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Modal from '../ui/Modal.jsx';
 import Button from '../ui/Button.jsx';
-import { TextField, FormError } from '../ui/Form.jsx';
+import { TextField, DateField, FormError } from '../ui/Form.jsx';
 
 /**
  * Mengubah status aset terpilih menjadi "Dijual" atau "Terjual".
@@ -90,9 +90,8 @@ export default function SellAssetModal({ mode, count, onConfirm, onClose }) {
               placeholder="2500000"
               hint={preview(soldPrice) || 'Ketik angka saja, tanpa titik atau koma.'}
             />
-            <TextField
+            <DateField
               label="Tanggal Terjual"
-              type="date"
               value={soldDate}
               onChange={(e) => setSoldDate(e.target.value)}
               hint="Opsional — boleh dilengkapi belakangan."

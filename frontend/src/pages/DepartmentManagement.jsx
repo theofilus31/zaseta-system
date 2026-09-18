@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -107,9 +106,9 @@ export default function DepartmentManagement() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Master Data"
+        eyebrow="Data Acuan"
         title="Departemen"
         description="Divisi pemilik aset. Berbeda dari pemegang perorangan — departemen tetap melekat pada aset meski tidak sedang dipegang siapa pun."
         actions={
@@ -279,6 +278,6 @@ export default function DepartmentManagement() {
           onClose={() => setShowImport(false)}
         />
       )}
-    </Layout>
+    </>
   );
 }

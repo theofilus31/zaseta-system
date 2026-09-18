@@ -1,15 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
+import Modal from '../components/ui/Modal.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
 import { useUnsavedChanges, useUnsavedChangesContext } from '../context/UnsavedChangesContext.jsx';
 import {
-  TextField, SelectField, TextareaField, FormField, Checkbox,
+  TextField, SearchableSelect, DateField, TextareaField, FormField, Checkbox, FormError,
 } from '../components/ui/Form.jsx';
+
+const EMPTY_NEW_CATEGORY = { name: '', slug: '' };
+const EMPTY_NEW_LOCATION = { code: '', name: '', description: '' };
+const EMPTY_NEW_SUB_LOCATION = { code: '', name: '' };
+
+/** Tombol kecil di ujung baris label — lihat FormField.jsx (`labelAction`). */
+function CreateNewButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700"
+    >
+      <i className="fas fa-plus text-[9px]" aria-hidden="true" />
+      Buat Baru
+    </button>
+  );
+}
 
 const STATUS_OPTIONS = [
   { value: 'idle', label: 'Menganggur' },
@@ -59,7 +77,7 @@ export default function AssetForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
-  const { pushError, pushSuccess } = useNotification();
+  const { pushError, pushSuccess, pushLimitError } = useNotification();
 
   const [categories, setCategories] = useState([]);
   const [assetTypes, setAssetTypes] = useState([]);
@@ -73,6 +91,40 @@ export default function AssetForm() {
   const [customFieldValues, setCustomFieldValues] = useState({}); // { fieldId: value }
   const [saving, setSaving] = useState(false);
 
+  /* Buat Kode Barang/Lokasi baru TANPA meninggalkan form ini — dulu tenant
+     baru (belum punya kode barang/lokasi apa pun) wajib buka menu Data Acuan
+     dulu sebelum bisa mengisi form aset sama sekali. Modal ini memanggil
+     endpoint yang SAMA dipakai CategoryManagement.jsx/LocationManagement.jsx
+     (POST /categories, POST /locations) — bukan alur baru, cuma jalan pintas
+     dari dalam form ini. Begitu berhasil, hasilnya langsung dipilihkan ke
+     field yang memicunya, supaya tidak perlu dicari & dipilih ulang manual. */
+  const [newCategoryModal, setNewCategoryModal] = useState(false);
+  const [newCategoryForm, setNewCategoryForm] = useState(EMPTY_NEW_CATEGORY);
+  const [newCategoryError, setNewCategoryError] = useState('');
+  const [savingNewCategory, setSavingNewCategory] = useState(false);
+
+  const [newLocationModal, setNewLocationModal] = useState(false);
+  const [newLocationForm, setNewLocationForm] = useState(EMPTY_NEW_LOCATION);
+  const [newLocationError, setNewLocationError] = useState('');
+  const [savingNewLocation, setSavingNewLocation] = useState(false);
+  // Sub lokasi opsional, BISA LEBIH DARI SATU (mis. Lantai 1, Lantai 2,
+  // Gudang A) — dibuat lewat modal yang SAMA (bukan modal terpisah), karena
+  // sub_locations.location_id wajib mengacu ke lokasi yang baru dibuat itu
+  // sendiri. Baris kosong dilewati saat disimpan, tidak wajib diisi semua —
+  // tetap bisa ditambah belakangan dari menu Data Acuan kalau tidak diisi di
+  // sini sama sekali.
+  const [newSubLocationForms, setNewSubLocationForms] = useState([EMPTY_NEW_SUB_LOCATION]);
+
+  function updateSubLocationRow(index, field, value) {
+    setNewSubLocationForms((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  }
+  function addSubLocationRow() {
+    setNewSubLocationForms((rows) => [...rows, { ...EMPTY_NEW_SUB_LOCATION }]);
+  }
+  function removeSubLocationRow(index) {
+    setNewSubLocationForms((rows) => rows.filter((_, i) => i !== index));
+  }
+
   /* Potret isian saat form pertama siap dipakai — kosong untuk Tambah Aset,
      atau data yang baru dimuat untuk Ubah Aset. Perbandingan terhadap potret
      inilah yang menentukan apakah ada perubahan yang belum disimpan; memakai
@@ -81,10 +133,17 @@ export default function AssetForm() {
   const [baseline, setBaseline] = useState(() => snapshot(EMPTY_FORM, {}));
   const savedRef = useRef(false);
 
+  function loadCategories() {
+    return axiosClient.get('/categories').then((res) => { setCategories(res.data); return res.data; });
+  }
+  function loadLocations() {
+    return axiosClient.get('/locations').then((res) => { setLocations(res.data); return res.data; });
+  }
+
   useEffect(() => {
-    axiosClient.get('/categories').then((res) => setCategories(res.data));
+    loadCategories();
     axiosClient.get('/asset-types').then((res) => setAssetTypes(res.data));
-    axiosClient.get('/locations').then((res) => setLocations(res.data));
+    loadLocations();
     axiosClient.get('/departments').then((res) => setDepartments(res.data));
   }, []);
 
@@ -96,10 +155,15 @@ export default function AssetForm() {
       .then((res) => setCustomFieldDefs(res.data));
   }, [form.categoryId]);
 
+  function loadSubLocations(locationId) {
+    if (!locationId) { setSubLocations([]); return Promise.resolve([]); }
+    return axiosClient.get('/sub-locations', { params: { locationId } })
+      .then((res) => { setSubLocations(res.data); return res.data; });
+  }
+
   useEffect(() => {
-    if (!form.locationId) { setSubLocations([]); return; }
-    axiosClient.get('/sub-locations', { params: { locationId: form.locationId } })
-      .then((res) => setSubLocations(res.data));
+    loadSubLocations(form.locationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.locationId]);
 
   useEffect(() => {
@@ -146,9 +210,96 @@ export default function AssetForm() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   }
 
+  /* Adaptor untuk SearchableSelect — onChange-nya mengirim nilai langsung,
+     bukan event, jadi tidak bisa dipakai langsung dengan handleChange. */
+  const changeField = (name) => (value) => setForm((f) => ({ ...f, [name]: value }));
+
   /* Ganti lokasi induk → reset sub lokasi, karena pilihan lama sudah tidak relevan */
-  function handleLocationChange(e) {
-    setForm((f) => ({ ...f, locationId: e.target.value, subLocationId: '' }));
+  function handleLocationChange(value) {
+    setForm((f) => ({ ...f, locationId: value, subLocationId: '' }));
+  }
+
+  async function handleCreateCategory(e) {
+    e.preventDefault();
+    setNewCategoryError('');
+    setSavingNewCategory(true);
+    try {
+      const res = await axiosClient.post('/categories', newCategoryForm);
+      await loadCategories();
+      setForm((f) => ({ ...f, categoryId: String(res.data.id) }));
+      setNewCategoryModal(false);
+      setNewCategoryForm(EMPTY_NEW_CATEGORY);
+      pushSuccess(`Kode barang "${res.data.name}" ditambahkan dan langsung dipilih.`);
+    } catch (err) {
+      setNewCategoryError(err.response?.data?.message || 'Gagal menyimpan kode barang/aset.');
+    } finally {
+      setSavingNewCategory(false);
+    }
+  }
+
+  async function handleCreateLocation(e) {
+    e.preventDefault();
+    setNewLocationError('');
+    setSavingNewLocation(true);
+    try {
+      const res = await axiosClient.post('/locations', newLocationForm);
+      await loadLocations();
+
+      // Sub lokasi opsional, BISA LEBIH DARI SATU BARIS — baris kosong
+      // dilewati, satu per satu berurutan (bukan Promise.all) supaya kalau
+      // salah satu gagal (mis. kode dobel), sisanya tetap lanjut dicoba dan
+      // pesan galatnya bisa disebutkan per baris. Gagal di sini TIDAK
+      // membatalkan lokasi induk yang sudah berhasil dibuat.
+      const rowsToCreate = newSubLocationForms.filter((row) => row.code.trim() && row.name.trim());
+      const createdSubLocations = [];
+      const failedSubLocations = [];
+      for (const row of rowsToCreate) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const subRes = await axiosClient.post('/sub-locations', { ...row, locationId: res.data.id });
+          createdSubLocations.push({ id: String(subRes.data.id), name: subRes.data.name });
+        } catch (subErr) {
+          failedSubLocations.push({ code: row.code, message: subErr.response?.data?.message || 'Gagal ditambahkan.' });
+        }
+      }
+      if (failedSubLocations.length > 0) {
+        pushError(`Sub lokasi ${failedSubLocations.map((f) => `"${f.code}" (${f.message})`).join(', ')} tidak tersimpan.`);
+      }
+
+      // WAJIB dituntaskan sebelum setForm — kalau tidak, kotak Sub Lokasi
+      // sempat menyinkronkan teksnya duluan terhadap daftar `subLocations`
+      // yang MASIH KOSONG (belum sempat dimuat ulang), jadi kotaknya
+      // kelihatan kosong walau `form.subLocationId` sebenarnya sudah benar
+      // terisi (nilai preview kode aset tetap benar, cuma tampilan kotaknya
+      // yang keliru) — bug nyata yang sempat kejadian sebelum baris ini ada.
+      await loadSubLocations(res.data.id);
+
+      // Cuma sub lokasi PERTAMA yang langsung dipilihkan ke form aset (satu
+      // aset cuma bisa berada di satu sub lokasi) — sisanya tetap tersimpan
+      // di sistem, tinggal dipilih manual kalau perlu dipakai aset lain.
+      const firstSubLocation = createdSubLocations[0];
+      setForm((f) => ({ ...f, locationId: String(res.data.id), subLocationId: firstSubLocation?.id || '' }));
+      setNewLocationModal(false);
+      setNewLocationForm(EMPTY_NEW_LOCATION);
+      setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]);
+      pushSuccess(
+        createdSubLocations.length > 0
+          ? `Lokasi "${res.data.name}" dan ${createdSubLocations.length} sub lokasi ditambahkan. "${firstSubLocation.name}" langsung dipilih.`
+          : `Lokasi "${res.data.name}" ditambahkan dan langsung dipilih.`
+      );
+    } catch (err) {
+      // Batas paket (PLAN_LIMIT_REACHED — lihat middleware/planLimits.js
+      // checkLocationLimit) dapat CTA "Upgrade Plan" lewat toast, bukan cuma
+      // pesan galat polos di dalam modal.
+      if (err.response?.data?.code === 'PLAN_LIMIT_REACHED') {
+        pushLimitError(err);
+        setNewLocationError(err.response.data.message);
+      } else {
+        setNewLocationError(err.response?.data?.message || 'Gagal menyimpan lokasi.');
+      }
+    } finally {
+      setSavingNewLocation(false);
+    }
   }
 
   function handleCustomFieldChange(fieldId, value) {
@@ -197,14 +348,14 @@ export default function AssetForm() {
         navigate(`/assets/${res.data.id}`);
       }
     } catch (err) {
-      pushError(err.response?.data?.message || 'Gagal menyimpan aset.');
+      pushLimitError(err, 'Gagal menyimpan aset.');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         backTo={isEdit ? `/assets/${id}` : '/assets'}
         backLabel={isEdit ? 'Detail Aset' : 'Daftar Aset'}
@@ -266,13 +417,12 @@ export default function AssetForm() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <SelectField
-              label="Kode Barang/Aset" name="categoryId" value={form.categoryId}
-              onChange={handleChange} required
-            >
-              <option value="">Pilih kode barang/aset</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.slug}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Kode Barang/Aset" value={form.categoryId} onChange={changeField('categoryId')} required
+              options={categories} getOptionLabel={(c) => `${c.name} · ${c.slug}`}
+              placeholder="Cari kode barang/aset…" emptyLabel="Pilih kode barang/aset"
+              labelAction={<CreateNewButton onClick={() => setNewCategoryModal(true)} />}
+            />
 
             {!isEdit && (
               <TextField
@@ -283,30 +433,28 @@ export default function AssetForm() {
               />
             )}
 
-            <SelectField
-              label="Lokasi" name="locationId" value={form.locationId}
-              onChange={handleLocationChange} required
-            >
-              <option value="">Pilih lokasi</option>
-              {locations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Lokasi" value={form.locationId} onChange={handleLocationChange} required
+              options={locations} getOptionLabel={(l) => `${l.code} · ${l.name}`}
+              placeholder="Cari lokasi…" emptyLabel="Pilih lokasi"
+              labelAction={<CreateNewButton onClick={() => setNewLocationModal(true)} />}
+            />
 
-            <SelectField
-              label="Sub Lokasi" name="subLocationId" value={form.subLocationId}
-              onChange={handleChange} disabled={!form.locationId}
-            >
-              <option value="">{form.locationId ? 'Tanpa sub lokasi (opsional)' : 'Pilih lokasi dahulu'}</option>
-              {subLocations.map((sl) => <option key={sl.id} value={sl.id}>{sl.code} · {sl.name}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Sub Lokasi" value={form.subLocationId} onChange={changeField('subLocationId')}
+              disabled={!form.locationId}
+              options={subLocations} getOptionLabel={(sl) => `${sl.code} · ${sl.name}`}
+              placeholder="Cari sub lokasi…"
+              emptyLabel={form.locationId ? 'Tanpa sub lokasi (opsional)' : 'Pilih lokasi dahulu'}
+            />
 
-            <SelectField
-              label="Departemen" name="departmentId" value={form.departmentId}
-              onChange={handleChange} className="sm:col-span-2"
+            <SearchableSelect
+              label="Departemen" value={form.departmentId} onChange={changeField('departmentId')}
+              className="sm:col-span-2"
               hint="Divisi penanggung jawab aset. Tetap melekat meski aset tidak sedang dipegang siapa pun."
-            >
-              <option value="">Belum ditentukan</option>
-              {departments.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
-            </SelectField>
+              options={departments} getOptionLabel={(d) => `${d.code} · ${d.name}`}
+              placeholder="Cari departemen…" emptyLabel="Belum ditentukan"
+            />
           </div>
         </Card>
 
@@ -320,23 +468,28 @@ export default function AssetForm() {
               required className="sm:col-span-2" placeholder="Mis. Laptop Marketing 1"
             />
 
-            <SelectField label="Kategori Aset" name="assetTypeId" value={form.assetTypeId} onChange={handleChange} required>
-              <option value="">Pilih kategori aset</option>
-              {assetTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Kategori Aset" value={form.assetTypeId} onChange={changeField('assetTypeId')} required
+              options={assetTypes} placeholder="Cari kategori aset…" emptyLabel="Pilih kategori aset"
+            />
 
-            <SelectField label="Kondisi Fisik" name="condition" value={form.condition} onChange={handleChange} required>
-              {CONDITION_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Kondisi Fisik" value={form.condition} onChange={changeField('condition')} required
+              clearable={false} searchable={false}
+              options={CONDITION_OPTIONS} getOptionLabel={(c) => c.label} getOptionValue={(c) => c.value}
+              placeholder="Pilih kondisi…"
+            />
 
             <TextField label="Brand" name="brand" value={form.brand} onChange={handleChange} placeholder="Mis. Dell" />
             <TextField label="Model" name="model" value={form.model} onChange={handleChange} placeholder="Mis. Latitude 5420" />
             <TextField label="Nomor Seri" name="serialNumber" value={form.serialNumber} onChange={handleChange} className="font-mono" />
 
             <div>
-              <SelectField label="Status" name="status" value={form.status} onChange={handleChange}>
-                {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </SelectField>
+              <SearchableSelect
+                label="Status" value={form.status} onChange={changeField('status')} clearable={false} searchable={false}
+                options={STATUS_OPTIONS} getOptionLabel={(s) => s.label} getOptionValue={(s) => s.value}
+                placeholder="Pilih status…"
+              />
 
               {originInfo && (
                 <p className="mt-2 flex gap-2 rounded-lg bg-accent-50 px-3 py-2 text-xs text-accent-700 leading-relaxed">
@@ -376,22 +529,21 @@ export default function AssetForm() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <TextField label="Vendor" name="vendor" value={form.vendor} onChange={handleChange} className="sm:col-span-2" />
-            <TextField label="Tanggal Pembelian" name="purchaseDate" type="date" value={form.purchaseDate} onChange={handleChange} />
+            <DateField label="Tanggal Pembelian" name="purchaseDate" value={form.purchaseDate} onChange={handleChange} />
             <TextField label="Harga Beli" name="purchasePrice" type="number" min="0" value={form.purchasePrice} onChange={handleChange} placeholder="0" />
 
-            <TextField
-              label="Garansi Berakhir" name="warrantyExpiry" type="date"
+            <DateField
+              label="Garansi Berakhir" name="warrantyExpiry"
               value={form.warrantyExpiry} onChange={handleChange}
               hint="Aset yang garansinya mendekati habis akan muncul di Dasbor."
             />
 
-            <SelectField
-              label="Masa Manfaat" name="usefulLifeMonths"
-              value={String(form.usefulLifeMonths)} onChange={handleChange}
-              hint="Dasar perhitungan penyusutan garis lurus."
-            >
-              {USEFUL_LIFE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </SelectField>
+            <SearchableSelect
+              label="Masa Manfaat" value={String(form.usefulLifeMonths)} onChange={changeField('usefulLifeMonths')}
+              clearable={false} searchable={false} hint="Dasar perhitungan penyusutan garis lurus."
+              options={USEFUL_LIFE_OPTIONS} getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+              placeholder="Pilih masa manfaat…"
+            />
 
             {form.usefulLifeMonths && (
               <TextField
@@ -422,13 +574,13 @@ export default function AssetForm() {
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <TextField
+                  <DateField
                     label={form.status === 'hilang' ? 'Tanggal Diketahui Hilang' : 'Tanggal Penghapusan'}
-                    name="retiredDate" type="date"
+                    name="retiredDate"
                     value={form.retiredDate} onChange={handleChange}
                   />
                   <TextField
-                    label="No. Berita Acara" name="retiredDocNo"
+                    label="Nomor Berita Acara" name="retiredDocNo"
                     value={form.retiredDocNo} onChange={handleChange}
                     placeholder="BA/GA/2026/014"
                     hint={form.status === 'hilang' ? 'Nomor laporan kehilangan, bila ada.' : 'Nomor berita acara penghapusan.'}
@@ -447,7 +599,7 @@ export default function AssetForm() {
 
             {showTerjualFields && (
               <>
-                <TextField label="Tanggal Terjual" name="soldDate" type="date" value={form.soldDate} onChange={handleChange} />
+                <DateField label="Tanggal Terjual" name="soldDate" value={form.soldDate} onChange={handleChange} />
                 <TextField
                   label="Harga Terjual" name="soldPrice" type="number" min="0"
                   value={form.soldPrice} onChange={handleChange} required
@@ -511,7 +663,145 @@ export default function AssetForm() {
           </Button>
         </div>
       </form>
-    </Layout>
+
+      {newCategoryModal && (
+        <Modal
+          title="Buat Kode Barang Baru"
+          description="Langsung dipilih ke field Kode Barang/Aset begitu tersimpan."
+          icon="fa-tags"
+          onClose={() => { setNewCategoryModal(false); setNewCategoryError(''); }}
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setNewCategoryModal(false)} disabled={savingNewCategory}>Batal</Button>
+              <Button size="sm" onClick={handleCreateCategory} loading={savingNewCategory}>
+                {savingNewCategory ? 'Menyimpan…' : 'Simpan Kode Barang'}
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleCreateCategory} className="space-y-4">
+            <TextField
+              label="Nama" required autoFocus
+              value={newCategoryForm.name}
+              onChange={(e) => setNewCategoryForm({
+                ...newCategoryForm,
+                name: e.target.value,
+                slug: e.target.value.toLowerCase().replace(/\s+/g, '-'),
+              })}
+              placeholder="Mis. Laptop"
+            />
+            <TextField
+              label="Kode Barang" required
+              value={newCategoryForm.slug}
+              onChange={(e) => setNewCategoryForm({ ...newCategoryForm, slug: e.target.value })}
+              placeholder="Mis. laptop"
+              className="font-mono"
+              hint='Dipakai apa adanya di dalam kode aset. Sebaiknya singkat, tanpa spasi, dan tidak mengandung karakter "/".'
+            />
+            <FormError>{newCategoryError}</FormError>
+          </form>
+        </Modal>
+      )}
+
+      {newLocationModal && (
+        <Modal
+          title="Buat Lokasi Baru"
+          description="Langsung dipilih ke field Lokasi begitu tersimpan."
+          icon="fa-building"
+          onClose={() => { setNewLocationModal(false); setNewLocationError(''); setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]); }}
+          footer={
+            <>
+              <Button
+                variant="secondary" size="sm" disabled={savingNewLocation}
+                onClick={() => { setNewLocationModal(false); setNewSubLocationForms([EMPTY_NEW_SUB_LOCATION]); }}
+              >
+                Batal
+              </Button>
+              <Button size="sm" onClick={handleCreateLocation} loading={savingNewLocation}>
+                {savingNewLocation ? 'Menyimpan…' : 'Simpan Lokasi'}
+              </Button>
+            </>
+          }
+        >
+          <form onSubmit={handleCreateLocation} className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <TextField
+                label="Kode" required autoFocus
+                value={newLocationForm.code}
+                onChange={(e) => setNewLocationForm({ ...newLocationForm, code: e.target.value.toUpperCase() })}
+                placeholder="HO"
+                className="col-span-1 font-mono"
+              />
+              <TextField
+                label="Nama Lokasi" required
+                value={newLocationForm.name}
+                onChange={(e) => setNewLocationForm({ ...newLocationForm, name: e.target.value })}
+                placeholder="Head Office"
+                className="col-span-2"
+              />
+            </div>
+            <TextareaField
+              label="Deskripsi"
+              value={newLocationForm.description}
+              onChange={(e) => setNewLocationForm({ ...newLocationForm, description: e.target.value })}
+              rows={2}
+              placeholder="Keterangan singkat (opsional)"
+            />
+
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-ink-200" />
+              <span className="text-xs font-medium text-ink-400">SUB LOKASI (OPSIONAL)</span>
+              <span className="h-px flex-1 bg-ink-200" />
+            </div>
+            <p className="text-xs text-ink-400 -mt-2">
+              Isi kalau lokasi ini langsung butuh sub lokasi — mis. ruangan/lantai di dalam {newLocationForm.name || 'lokasi'} ini. Boleh lebih dari satu, atau dikosongkan dan ditambah belakangan.
+            </p>
+
+            <div className="space-y-3">
+              {newSubLocationForms.map((row, index) => (
+                <div key={index} className="flex gap-2 items-start">
+                  <TextField
+                    label={index === 0 ? 'Kode' : undefined}
+                    value={row.code}
+                    onChange={(e) => updateSubLocationRow(index, 'code', e.target.value.toUpperCase())}
+                    placeholder="LT1"
+                    className="w-24 shrink-0 font-mono"
+                  />
+                  <TextField
+                    label={index === 0 ? 'Nama Sub Lokasi' : undefined}
+                    value={row.name}
+                    onChange={(e) => updateSubLocationRow(index, 'name', e.target.value)}
+                    placeholder="Lantai 1"
+                    className="flex-1"
+                  />
+                  {newSubLocationForms.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeSubLocationRow(index)}
+                      aria-label="Hapus baris sub lokasi ini"
+                      className={`shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-ink-400 hover:bg-danger-50 hover:text-danger-600 ${index === 0 ? 'mt-6' : ''}`}
+                    >
+                      <i className="fas fa-trash-can text-xs" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addSubLocationRow}
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-600 hover:text-brand-700"
+            >
+              <i className="fas fa-plus text-[10px]" aria-hidden="true" />
+              Tambah Sub Lokasi
+            </button>
+
+            <FormError>{newLocationError}</FormError>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -526,10 +816,13 @@ function CustomFieldInput({ field, value, onChange }) {
 
   if (field.field_type === 'select') {
     return (
-      <SelectField {...common}>
-        <option value="">Pilih…</option>
-        {(field.field_options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-      </SelectField>
+      <SearchableSelect
+        label={field.field_label} required={Boolean(field.is_required)}
+        value={value} onChange={onChange}
+        options={field.field_options || []}
+        getOptionLabel={(o) => o} getOptionValue={(o) => o}
+        placeholder="Cari…" emptyLabel="Pilih…"
+      />
     );
   }
 
@@ -549,6 +842,10 @@ function CustomFieldInput({ field, value, onChange }) {
     return <TextareaField {...common} rows={2} className="sm:col-span-2" />;
   }
 
-  const type = field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text';
+  if (field.field_type === 'date') {
+    return <DateField {...common} />;
+  }
+
+  const type = field.field_type === 'number' ? 'number' : 'text';
   return <TextField {...common} type={type} />;
 }

@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
+const { clampPagination } = require('../utils/pagination');
 
 /**
  * ============================================================================
@@ -22,8 +23,8 @@ const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Per
 const CATEGORIES = Object.keys(CATEGORY_LABEL);
 const TYPE_LABEL = { masuk: 'Stok Masuk', keluar: 'Stok Keluar', penyesuaian: 'Penyesuaian' };
 
-async function generateConsumableCode() {
-  const [rows] = await pool.query(`SELECT code FROM consumables ORDER BY id DESC LIMIT 1`);
+async function generateConsumableCode(tenantId) {
+  const [rows] = await pool.query(`SELECT code FROM consumables WHERE tenant_id = :tenantId ORDER BY id DESC LIMIT 1`, { tenantId });
   const last = rows[0] ? Number(String(rows[0].code).split('-')[1]) : 0;
   return `BHP-${String(last + 1).padStart(4, '0')}`;
 }
@@ -54,14 +55,15 @@ const SELECT_ITEM = `
 
 // GET /api/consumables?search=&category=&lowStockOnly=&page=&limit=
 const listConsumables = asyncHandler(async (req, res) => {
-  const { search = '', category = '', lowStockOnly, page = 1, limit = 20 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
+  const { search = '', category = '', lowStockOnly } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
 
-  const conditions = ['c.is_active = TRUE'];
-  const params = {};
+  const conditions = ['c.is_active = TRUE', 'c.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
 
   if (search) {
-    conditions.push('(c.name LIKE :search OR c.code LIKE :search)');
+    conditions.push('(c.name ILIKE :search OR c.code ILIKE :search)');
     params.search = `%${search}%`;
   }
   if (category && CATEGORIES.includes(category)) {
@@ -94,7 +96,7 @@ const listConsumables = asyncHandler(async (req, res) => {
 // GET /api/consumables/:id
 const getConsumable = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const [rows] = await pool.query(`${SELECT_ITEM} WHERE c.id = :id`, { id });
+  const [rows] = await pool.query(`${SELECT_ITEM} WHERE c.id = :id AND c.tenant_id = :tenantId`, { id, tenantId: req.user.tenant_id });
   if (!rows[0]) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
   res.json(toItem(rows[0]));
 });
@@ -102,17 +104,25 @@ const getConsumable = asyncHandler(async (req, res) => {
 // POST /api/consumables
 const createConsumable = asyncHandler(async (req, res) => {
   const { name, category = 'lainnya', unit = 'pcs', minStock = 0, locationId, notes } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!String(name || '').trim()) return res.status(400).json({ message: 'Nama barang wajib diisi.' });
   if (!CATEGORIES.includes(category)) return res.status(400).json({ message: 'Kategori tidak dikenal.' });
   if (!String(unit || '').trim()) return res.status(400).json({ message: 'Satuan wajib diisi.' });
 
-  const code = await generateConsumableCode();
+  // locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  if (locationId) {
+    const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
+    if (!locRows[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
+  }
+
+  const code = await generateConsumableCode(tenantId);
   const [result] = await pool.query(
-    `INSERT INTO consumables (code, name, category, unit, min_stock, location_id, notes, created_by)
-     VALUES (:code, :name, :category, :unit, :minStock, :locationId, :notes, :userId)`,
+    `INSERT INTO consumables (tenant_id, code, name, category, unit, min_stock, location_id, notes, created_by)
+     VALUES (:tenantId, :code, :name, :category, :unit, :minStock, :locationId, :notes, :userId)
+     RETURNING id`,
     {
-      code, name: name.trim(), category, unit: unit.trim(),
+      tenantId, code, name: name.trim(), category, unit: unit.trim(),
       minStock: Number(minStock) || 0, locationId: locationId || null,
       notes: notes || null, userId: req.user.id,
     }
@@ -131,20 +141,27 @@ const createConsumable = asyncHandler(async (req, res) => {
 const updateConsumable = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, category, unit, minStock, locationId, notes } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!String(name || '').trim()) return res.status(400).json({ message: 'Nama barang wajib diisi.' });
   if (!CATEGORIES.includes(category)) return res.status(400).json({ message: 'Kategori tidak dikenal.' });
 
-  const [rows] = await pool.query(`SELECT * FROM consumables WHERE id = :id`, { id });
+  const [rows] = await pool.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   if (!rows[0]) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
+
+  // locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  if (locationId) {
+    const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
+    if (!locRows[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
+  }
 
   await pool.query(
     `UPDATE consumables
      SET name = :name, category = :category, unit = :unit, min_stock = :minStock,
          location_id = :locationId, notes = :notes
-     WHERE id = :id`,
+     WHERE id = :id AND tenant_id = :tenantId`,
     {
-      id, name: name.trim(), category, unit: (unit || 'pcs').trim(),
+      id, tenantId, name: name.trim(), category, unit: (unit || 'pcs').trim(),
       minStock: Number(minStock) || 0, locationId: locationId || null, notes: notes || null,
     }
   );
@@ -161,7 +178,8 @@ const updateConsumable = asyncHandler(async (req, res) => {
 // DELETE /api/consumables/:id — nonaktifkan, ditolak kalau stoknya masih ada
 const deleteConsumable = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const [rows] = await pool.query(`SELECT * FROM consumables WHERE id = :id`, { id });
+  const tenantId = req.user.tenant_id;
+  const [rows] = await pool.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   if (!rows[0]) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
 
   /* Menonaktifkan barang yang stoknya masih ada akan menyembunyikan nilai
@@ -173,7 +191,7 @@ const deleteConsumable = asyncHandler(async (req, res) => {
     });
   }
 
-  await pool.query(`UPDATE consumables SET is_active = FALSE WHERE id = :id`, { id });
+  await pool.query(`UPDATE consumables SET is_active = FALSE WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   await logAudit({
     userId: req.user.id, action: 'delete', entityType: 'consumable', entityId: id,
     oldValues: { code: rows[0].code, name: rows[0].name }, ipAddress: req.ip,
@@ -184,8 +202,13 @@ const deleteConsumable = asyncHandler(async (req, res) => {
 // GET /api/consumables/:id/transactions?page=&limit=
 const listTransactions = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { page = 1, limit = 20 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
+
+  // consumable_transactions tidak punya tenant_id langsung — kepemilikannya
+  // dibuktikan lewat consumables induknya sebelum baris transaksi manapun dibaca.
+  const [ownerRows] = await pool.query(`SELECT id FROM consumables WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId: req.user.tenant_id });
+  if (!ownerRows[0]) return res.status(404).json({ message: 'Barang tidak ditemukan.' });
 
   const [rows] = await pool.query(
     `SELECT t.*, u.name AS created_by_name
@@ -226,7 +249,8 @@ async function recordTransaction(conn, { consumableId, type, quantity, balanceAf
   const [result] = await conn.query(
     `INSERT INTO consumable_transactions
        (consumable_id, type, quantity, balance_after, vendor, unit_price, requested_by, department, notes, created_by)
-     VALUES (:consumableId, :type, :quantity, :balanceAfter, :vendor, :unitPrice, :requestedBy, :department, :notes, :userId)`,
+     VALUES (:consumableId, :type, :quantity, :balanceAfter, :vendor, :unitPrice, :requestedBy, :department, :notes, :userId)
+     RETURNING id`,
     {
       consumableId, type, quantity, balanceAfter,
       vendor: extra.vendor || null, unitPrice: extra.unitPrice || null,
@@ -249,7 +273,7 @@ const stockIn = asyncHandler(async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id FOR UPDATE`, { id });
+    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId FOR UPDATE`, { id, tenantId: req.user.tenant_id });
     if (!rows[0]) { await conn.rollback(); return res.status(404).json({ message: 'Barang tidak ditemukan.' }); }
 
     const newStock = rows[0].current_stock + qty;
@@ -289,7 +313,7 @@ const stockOut = asyncHandler(async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id FOR UPDATE`, { id });
+    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId FOR UPDATE`, { id, tenantId: req.user.tenant_id });
     if (!rows[0]) { await conn.rollback(); return res.status(404).json({ message: 'Barang tidak ditemukan.' }); }
 
     if (qty > rows[0].current_stock) {
@@ -341,7 +365,7 @@ const adjustStock = asyncHandler(async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id FOR UPDATE`, { id });
+    const [rows] = await conn.query(`SELECT * FROM consumables WHERE id = :id AND tenant_id = :tenantId FOR UPDATE`, { id, tenantId: req.user.tenant_id });
     if (!rows[0]) { await conn.rollback(); return res.status(404).json({ message: 'Barang tidak ditemukan.' }); }
 
     const selisih = target - rows[0].current_stock;

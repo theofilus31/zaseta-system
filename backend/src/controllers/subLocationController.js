@@ -10,8 +10,8 @@ const listSubLocations = asyncHandler(async (req, res) => {
   }
   const [rows] = await pool.query(
     `SELECT id, location_id, code, name, description, is_active
-     FROM sub_locations WHERE location_id = :locationId AND is_active = TRUE ORDER BY name ASC`,
-    { locationId }
+     FROM sub_locations WHERE tenant_id = :tenantId AND location_id = :locationId AND is_active = TRUE ORDER BY name ASC`,
+    { tenantId: req.user.tenant_id, locationId }
   );
   res.json(rows);
 });
@@ -19,12 +19,17 @@ const listSubLocations = asyncHandler(async (req, res) => {
 // POST /api/sub-locations
 const createSubLocation = asyncHandler(async (req, res) => {
   const { locationId, code, name, description } = req.body;
+  const tenantId = req.user.tenant_id;
   if (!locationId || !code || !name) {
     return res.status(400).json({ message: 'locationId, kode, dan nama sub lokasi wajib diisi.' });
   }
   if (code.includes('/')) {
     return res.status(400).json({ message: 'Kode sub lokasi tidak boleh mengandung karakter "/" (dipakai sebagai pemisah pada kode aset).' });
   }
+
+  // locationId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
+  if (!locRows[0]) return res.status(404).json({ message: 'Lokasi tidak ditemukan.' });
 
   const [existing] = await pool.query(
     `SELECT id, is_active FROM sub_locations WHERE location_id = :locationId AND code = :code`,
@@ -41,8 +46,8 @@ const createSubLocation = asyncHandler(async (req, res) => {
   }
 
   const [result] = await pool.query(
-    `INSERT INTO sub_locations (location_id, code, name) VALUES (:locationId, :code, :name)`,
-    { locationId, code, name }
+    `INSERT INTO sub_locations (tenant_id, location_id, code, name) VALUES (:tenantId, :locationId, :code, :name) RETURNING id`,
+    { tenantId, locationId, code, name }
   );
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'sub_location', entityId: result.insertId, newValues: req.body });
   res.status(201).json({ id: result.insertId, code, name });
@@ -54,7 +59,7 @@ const updateSubLocation = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, description, isActive } = req.body;
 
-  const [rows] = await pool.query(`SELECT location_id FROM sub_locations WHERE id = :id`, { id });
+  const [rows] = await pool.query(`SELECT location_id FROM sub_locations WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId: req.user.tenant_id });
   if (!rows[0]) return res.status(404).json({ message: 'Sub lokasi tidak ditemukan.' });
 
   await pool.query(
@@ -68,7 +73,11 @@ const updateSubLocation = asyncHandler(async (req, res) => {
 // DELETE /api/sub-locations/:id (soft)
 const deleteSubLocation = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await pool.query(`UPDATE sub_locations SET is_active = FALSE WHERE id = :id`, { id });
+  const [result] = await pool.query(
+    `UPDATE sub_locations SET is_active = FALSE WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id }
+  );
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Sub lokasi tidak ditemukan.' });
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'sub_location', entityId: id });
   res.json({ message: 'Sub lokasi berhasil dinonaktifkan.' });
 });

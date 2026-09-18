@@ -8,22 +8,35 @@ const listCustomFields = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
     `SELECT id, category_id, field_key, field_label, field_type, field_options, is_required, sort_order
      FROM asset_custom_fields
-     WHERE is_active = TRUE AND (category_id IS NULL OR category_id = :categoryId)
+     WHERE tenant_id = :tenantId AND is_active = TRUE AND (category_id IS NULL OR category_id = :categoryId)
      ORDER BY sort_order ASC, id ASC`,
-    { categoryId: categoryId || null }
+    { tenantId: req.user.tenant_id, categoryId: categoryId || null }
   );
-  res.json(rows.map(r => ({ ...r, field_options: r.field_options ? JSON.parse(r.field_options) : null })));
+  // field_options kolom JSONB — driver pg sudah mengurainya jadi objek/array
+  // JS sendiri (beda dari mysql2 yang mengembalikan string JSON mentah),
+  // jadi TIDAK dipanggil JSON.parse() lagi di sini.
+  res.json(rows.map(r => ({ ...r, field_options: r.field_options || null })));
 });
 
 const createCustomField = asyncHandler(async (req, res) => {
   const { categoryId, fieldKey, fieldLabel, fieldType, fieldOptions, isRequired, sortOrder } = req.body;
+  const tenantId = req.user.tenant_id;
   if (!fieldKey || !fieldLabel || !fieldType) {
     return res.status(400).json({ message: 'fieldKey, fieldLabel, dan fieldType wajib diisi.' });
   }
+
+  // categoryId datang dari input pemakai — pastikan benar-benar milik tenant ini (kalau diisi; boleh NULL untuk field global).
+  if (categoryId) {
+    const [catRows] = await pool.query(`SELECT id FROM asset_categories WHERE id = :categoryId AND tenant_id = :tenantId`, { categoryId, tenantId });
+    if (!catRows[0]) return res.status(404).json({ message: 'Kode barang/aset tidak ditemukan.' });
+  }
+
   const [result] = await pool.query(
-    `INSERT INTO asset_custom_fields (category_id, field_key, field_label, field_type, field_options, is_required, sort_order)
-     VALUES (:categoryId, :fieldKey, :fieldLabel, :fieldType, :fieldOptions, :isRequired, :sortOrder)`,
+    `INSERT INTO asset_custom_fields (tenant_id, category_id, field_key, field_label, field_type, field_options, is_required, sort_order)
+     VALUES (:tenantId, :categoryId, :fieldKey, :fieldLabel, :fieldType, :fieldOptions, :isRequired, :sortOrder)
+     RETURNING id`,
     {
+      tenantId,
       categoryId: categoryId || null,
       fieldKey,
       fieldLabel,
@@ -40,6 +53,11 @@ const createCustomField = asyncHandler(async (req, res) => {
 const updateCustomField = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { fieldLabel, fieldType, fieldOptions, isRequired, sortOrder, isActive } = req.body;
+  const tenantId = req.user.tenant_id;
+
+  const [rows] = await pool.query(`SELECT id FROM asset_custom_fields WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+  if (!rows[0]) return res.status(404).json({ message: 'Bidang kustom tidak ditemukan.' });
+
   await pool.query(
     `UPDATE asset_custom_fields
      SET field_label = :fieldLabel, field_type = :fieldType, field_options = :fieldOptions,
@@ -61,7 +79,11 @@ const updateCustomField = asyncHandler(async (req, res) => {
 
 const deleteCustomField = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await pool.query(`UPDATE asset_custom_fields SET is_active = FALSE WHERE id = :id`, { id });
+  const [result] = await pool.query(
+    `UPDATE asset_custom_fields SET is_active = FALSE WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id }
+  );
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Bidang kustom tidak ditemukan.' });
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'asset_custom_field', entityId: id });
   res.json({ message: 'Bidang kustom berhasil dinonaktifkan.' });
 });

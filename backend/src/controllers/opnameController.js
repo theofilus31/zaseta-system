@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
+const { toCsvCell } = require('../utils/csv');
 
 /**
  * ============================================================================
@@ -32,13 +33,13 @@ const RESULTS = ['belum', 'ditemukan', 'salah_lokasi', 'tidak_ditemukan'];
 const RETIRED_STATUSES = ['terjual', 'hilang', 'dihapuskan'];
 
 /** Nomor sesi berurut per tahun: OPN/2026/0001 */
-async function generateOpnameCode() {
+async function generateOpnameCode(tenantId) {
   const year = new Date().getFullYear();
   const [rows] = await pool.query(
     `SELECT code FROM stock_opnames
-     WHERE code LIKE :prefix
+     WHERE tenant_id = :tenantId AND code LIKE :prefix
      ORDER BY code DESC LIMIT 1`,
-    { prefix: `OPN/${year}/%` }
+    { tenantId, prefix: `OPN/${year}/%` }
   );
   const last = rows[0] ? Number(String(rows[0].code).split('/')[2]) : 0;
   return `OPN/${year}/${String(last + 1).padStart(4, '0')}`;
@@ -47,10 +48,10 @@ async function generateOpnameCode() {
 /** Ringkasan hitungan per hasil untuk satu sesi atau sekumpulan sesi. */
 const SUMMARY_SELECT = `
   COUNT(i.id) AS total,
-  SUM(i.result = 'belum')           AS belum,
-  SUM(i.result = 'ditemukan')       AS ditemukan,
-  SUM(i.result = 'salah_lokasi')    AS salah_lokasi,
-  SUM(i.result = 'tidak_ditemukan') AS tidak_ditemukan`;
+  COUNT(*) FILTER (WHERE i.result = 'belum')           AS belum,
+  COUNT(*) FILTER (WHERE i.result = 'ditemukan')       AS ditemukan,
+  COUNT(*) FILTER (WHERE i.result = 'salah_lokasi')    AS salah_lokasi,
+  COUNT(*) FILTER (WHERE i.result = 'tidak_ditemukan') AS tidak_ditemukan`;
 
 const toSummary = (row) => ({
   total: Number(row.total || 0),
@@ -67,13 +68,13 @@ const listOpnames = asyncHandler(async (req, res) => {
   const { status = '', page = 1, limit = 20 } = req.query;
   const offset = (Number(page) - 1) * Number(limit);
 
-  const conditions = [];
-  const params = {};
+  const conditions = ['o.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
   if (status) {
     conditions.push('o.status = :status');
     params.status = status;
   }
-  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   const [rows] = await pool.query(
     `SELECT o.*,
@@ -88,7 +89,7 @@ const listOpnames = asyncHandler(async (req, res) => {
      LEFT JOIN users uc ON uc.id = o.created_by
      LEFT JOIN users uf ON uf.id = o.finished_by
      ${whereClause}
-     GROUP BY o.id
+     GROUP BY o.id, l.name, sl.name, c.name, uc.name, uf.name
      ORDER BY (o.status = 'berjalan') DESC, o.created_at DESC
      LIMIT :limit OFFSET :offset`,
     { ...params, limit: Number(limit), offset }
@@ -120,6 +121,7 @@ const listOpnames = asyncHandler(async (req, res) => {
  */
 const listActiveOpnames = asyncHandler(async (req, res) => {
   const { assetId } = req.query;
+  const tenantId = req.user.tenant_id;
 
   const [rows] = await pool.query(
     `SELECT o.id, o.code, o.name,
@@ -129,9 +131,9 @@ const listActiveOpnames = asyncHandler(async (req, res) => {
      ${assetId ? 'JOIN stock_opname_items i ON i.opname_id = o.id AND i.asset_id = :assetId' : ''}
      LEFT JOIN locations l      ON l.id = o.scope_location_id
      LEFT JOIN sub_locations sl ON sl.id = o.scope_sub_location_id
-     WHERE o.status = 'berjalan'
+     WHERE o.tenant_id = :tenantId AND o.status = 'berjalan'
      ORDER BY o.created_at DESC`,
-    assetId ? { assetId } : {}
+    assetId ? { assetId, tenantId } : { tenantId }
   );
   res.json(rows);
 });
@@ -142,6 +144,7 @@ const listActiveOpnames = asyncHandler(async (req, res) => {
 const getOpname = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { result = '', search = '' } = req.query;
+  const tenantId = req.user.tenant_id;
 
   const [sessions] = await pool.query(
     `SELECT o.*,
@@ -153,8 +156,8 @@ const getOpname = asyncHandler(async (req, res) => {
      LEFT JOIN asset_categories c ON c.id = o.scope_category_id
      LEFT JOIN users uc ON uc.id = o.created_by
      LEFT JOIN users uf ON uf.id = o.finished_by
-     WHERE o.id = :id`,
-    { id }
+     WHERE o.id = :id AND o.tenant_id = :tenantId`,
+    { id, tenantId }
   );
   const session = sessions[0];
   if (!session) return res.status(404).json({ message: 'Sesi opname tidak ditemukan.' });
@@ -173,7 +176,7 @@ const getOpname = asyncHandler(async (req, res) => {
     itemParams.result = result;
   }
   if (search) {
-    itemConditions.push('(a.name LIKE :search OR a.asset_code LIKE :search OR a.serial_number LIKE :search)');
+    itemConditions.push('(a.name ILIKE :search OR a.asset_code ILIKE :search OR a.serial_number ILIKE :search)');
     itemParams.search = `%${search}%`;
   }
 
@@ -191,7 +194,10 @@ const getOpname = asyncHandler(async (req, res) => {
      LEFT JOIN sub_locations fsl ON fsl.id = i.found_sub_location_id
      LEFT JOIN users u ON u.id = i.checked_by
      WHERE ${itemConditions.join(' AND ')}
-     ORDER BY FIELD(i.result, 'belum','salah_lokasi','tidak_ditemukan','ditemukan'), a.asset_code ASC`,
+     ORDER BY CASE i.result
+                WHEN 'belum' THEN 0 WHEN 'salah_lokasi' THEN 1
+                WHEN 'tidak_ditemukan' THEN 2 WHEN 'ditemukan' THEN 3 ELSE 4 END,
+              a.asset_code ASC`,
     itemParams
   );
 
@@ -203,9 +209,24 @@ const getOpname = asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 const createOpname = asyncHandler(async (req, res) => {
   const { name, locationId, subLocationId, categoryId, notes } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!String(name || '').trim()) {
     return res.status(400).json({ message: 'Nama sesi opname wajib diisi.' });
+  }
+
+  // locationId/subLocationId/categoryId datang dari input pemakai — pastikan benar-benar milik tenant ini.
+  if (locationId) {
+    const [r] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
+    if (!r[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
+  }
+  if (subLocationId) {
+    const [r] = await pool.query(`SELECT id FROM sub_locations WHERE id = :subLocationId AND tenant_id = :tenantId`, { subLocationId, tenantId });
+    if (!r[0]) return res.status(400).json({ message: 'Sub lokasi tidak valid.' });
+  }
+  if (categoryId) {
+    const [r] = await pool.query(`SELECT id FROM asset_categories WHERE id = :categoryId AND tenant_id = :tenantId`, { categoryId, tenantId });
+    if (!r[0]) return res.status(400).json({ message: 'Kode barang/aset tidak valid.' });
   }
 
   /* Dua sesi berjalan atas ruangan yang sama akan saling menimpa kesimpulan:
@@ -213,12 +234,14 @@ const createOpname = asyncHandler(async (req, res) => {
      diperiksa. Cukup satu sesi berjalan per cakupan. */
   const [running] = await pool.query(
     `SELECT id, code, name FROM stock_opnames
-     WHERE status = 'berjalan'
-       AND scope_location_id <=> :locationId
-       AND scope_sub_location_id <=> :subLocationId
-       AND scope_category_id <=> :categoryId
+     WHERE tenant_id = :tenantId
+       AND status = 'berjalan'
+       AND scope_location_id IS NOT DISTINCT FROM :locationId
+       AND scope_sub_location_id IS NOT DISTINCT FROM :subLocationId
+       AND scope_category_id IS NOT DISTINCT FROM :categoryId
      LIMIT 1`,
     {
+      tenantId,
       locationId: locationId || null,
       subLocationId: subLocationId || null,
       categoryId: categoryId || null,
@@ -234,12 +257,14 @@ const createOpname = asyncHandler(async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const code = await generateOpnameCode();
+    const code = await generateOpnameCode(tenantId);
     const [result] = await conn.query(
       `INSERT INTO stock_opnames
-         (code, name, scope_location_id, scope_sub_location_id, scope_category_id, notes, created_by)
-       VALUES (:code, :name, :locationId, :subLocationId, :categoryId, :notes, :userId)`,
+         (tenant_id, code, name, scope_location_id, scope_sub_location_id, scope_category_id, notes, created_by)
+       VALUES (:tenantId, :code, :name, :locationId, :subLocationId, :categoryId, :notes, :userId)
+       RETURNING id`,
       {
+        tenantId,
         code,
         name: name.trim(),
         locationId: locationId || null,
@@ -253,8 +278,8 @@ const createOpname = asyncHandler(async (req, res) => {
 
     /* Pembekuan daftar periksa. Lokasi & kondisi disalin apa adanya supaya
        nanti bisa dibandingkan dengan temuan lapangan. */
-    const scopeConditions = ['a.deleted_at IS NULL', `a.status NOT IN ('${RETIRED_STATUSES.join("','")}')`];
-    const scopeParams = { opnameId };
+    const scopeConditions = ['a.tenant_id = :tenantId', 'a.deleted_at IS NULL', `a.status NOT IN ('${RETIRED_STATUSES.join("','")}')`];
+    const scopeParams = { opnameId, tenantId };
     if (locationId) { scopeConditions.push('a.location_id = :locationId'); scopeParams.locationId = locationId; }
     if (subLocationId) { scopeConditions.push('a.sub_location_id = :subLocationId'); scopeParams.subLocationId = subLocationId; }
     if (categoryId) { scopeConditions.push('a.category_id = :categoryId'); scopeParams.categoryId = categoryId; }
@@ -356,8 +381,8 @@ async function applyCheck(session, item, body, userId) {
 }
 
 /** Ambil sesi + item, sekaligus tolak kalau sesinya sudah ditutup. */
-async function loadOpenSession(opnameId) {
-  const [rows] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id`, { id: opnameId });
+async function loadOpenSession(opnameId, tenantId) {
+  const [rows] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id AND tenant_id = :tenantId`, { id: opnameId, tenantId });
   const session = rows[0];
   if (!session) return { error: { code: 404, message: 'Sesi opname tidak ditemukan.' } };
   if (session.status !== 'berjalan') {
@@ -370,7 +395,7 @@ async function loadOpenSession(opnameId) {
 const checkItem = asyncHandler(async (req, res) => {
   const { id, itemId } = req.params;
 
-  const { session, error } = await loadOpenSession(id);
+  const { session, error } = await loadOpenSession(id, req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   const [items] = await pool.query(
@@ -388,13 +413,20 @@ const checkItem = asyncHandler(async (req, res) => {
 const scanItem = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { code } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!code) return res.status(400).json({ message: 'Kode QR wajib disertakan.' });
 
-  const { session, error } = await loadOpenSession(id);
+  const { session, error } = await loadOpenSession(id, tenantId);
   if (error) return res.status(error.code).json({ message: error.message });
 
-  const [qrRows] = await pool.query(`SELECT asset_id FROM qr_codes WHERE code = :code LIMIT 1`, { code });
+  // Ikut memfilter tenant lewat join ke assets — kalau tidak, kode QR aset milik
+  // tenant lain akan lolos dianggap "dikenali" lalu bocor ke fallback di bawah.
+  const [qrRows] = await pool.query(
+    `SELECT q.asset_id FROM qr_codes q JOIN assets a ON a.id = q.asset_id
+     WHERE q.code = :code AND a.tenant_id = :tenantId LIMIT 1`,
+    { code, tenantId }
+  );
   if (!qrRows[0]) return res.status(404).json({ message: 'Kode QR tidak dikenali.' });
 
   const [items] = await pool.query(
@@ -457,7 +489,7 @@ const finishOpname = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { applyLocation = false, applyCondition = false, markMissingAsLost = false, notes } = req.body;
 
-  const { session, error } = await loadOpenSession(id);
+  const { session, error } = await loadOpenSession(id, req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   const [pendingRows] = await pool.query(
@@ -519,7 +551,7 @@ const finishOpname = asyncHandler(async (req, res) => {
            balik ke pemeriksaan mana yang menyimpulkan barang ini hilang. */
         await conn.query(
           `UPDATE assets
-           SET status = 'hilang', retired_date = CURDATE(),
+           SET status = 'hilang', retired_date = CURRENT_DATE,
                retired_reason = :reason, updated_by = :userId
            WHERE id = :assetId`,
           {
@@ -544,8 +576,8 @@ const finishOpname = asyncHandler(async (req, res) => {
       `UPDATE stock_opnames
        SET status = 'selesai', finished_at = NOW(), finished_by = :userId,
            notes = COALESCE(:notes, notes)
-       WHERE id = :id`,
-      { id, userId: req.user.id, notes: notes || null }
+       WHERE id = :id AND tenant_id = :tenantId`,
+      { id, tenantId: req.user.tenant_id, userId: req.user.id, notes: notes || null }
     );
 
     await conn.commit();
@@ -570,12 +602,12 @@ const finishOpname = asyncHandler(async (req, res) => {
 const cancelOpname = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const { session, error } = await loadOpenSession(id);
+  const { session, error } = await loadOpenSession(id, req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   await pool.query(
-    `UPDATE stock_opnames SET status = 'dibatalkan', finished_at = NOW(), finished_by = :userId WHERE id = :id`,
-    { id, userId: req.user.id }
+    `UPDATE stock_opnames SET status = 'dibatalkan', finished_at = NOW(), finished_by = :userId WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id, userId: req.user.id }
   );
 
   await logAudit({
@@ -589,8 +621,9 @@ const cancelOpname = asyncHandler(async (req, res) => {
 // DELETE /api/opnames/:id
 const deleteOpname = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const tenantId = req.user.tenant_id;
 
-  const [rows] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id`, { id });
+  const [rows] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   const session = rows[0];
   if (!session) return res.status(404).json({ message: 'Sesi opname tidak ditemukan.' });
 
@@ -603,7 +636,7 @@ const deleteOpname = asyncHandler(async (req, res) => {
     });
   }
 
-  await pool.query(`DELETE FROM stock_opnames WHERE id = :id`, { id });
+  await pool.query(`DELETE FROM stock_opnames WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
 
   await logAudit({
     userId: req.user.id, action: 'delete', entityType: 'stock_opname', entityId: id,
@@ -618,8 +651,9 @@ const deleteOpname = asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 const exportOpname = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const tenantId = req.user.tenant_id;
 
-  const [sessions] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id`, { id });
+  const [sessions] = await pool.query(`SELECT * FROM stock_opnames WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   const session = sessions[0];
   if (!session) return res.status(404).json({ message: 'Sesi opname tidak ditemukan.' });
 
@@ -637,7 +671,10 @@ const exportOpname = asyncHandler(async (req, res) => {
      LEFT JOIN sub_locations fsl ON fsl.id = i.found_sub_location_id
      LEFT JOIN users u ON u.id = i.checked_by
      WHERE i.opname_id = :id
-     ORDER BY FIELD(i.result, 'tidak_ditemukan','salah_lokasi','belum','ditemukan'), a.asset_code ASC`,
+     ORDER BY CASE i.result
+                WHEN 'tidak_ditemukan' THEN 0 WHEN 'salah_lokasi' THEN 1
+                WHEN 'belum' THEN 2 WHEN 'ditemukan' THEN 3 ELSE 4 END,
+              a.asset_code ASC`,
     { id }
   );
 
@@ -653,12 +690,6 @@ const exportOpname = asyncHandler(async (req, res) => {
     'Kondisi Tercatat', 'Kondisi Temuan', 'Catatan', 'Diperiksa Oleh', 'Waktu Periksa',
   ];
 
-  const toCell = (value) => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    return /[",\r\n;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
-
   const lines = [headers.join(',')];
   for (const r of rows) {
     lines.push([
@@ -670,7 +701,7 @@ const exportOpname = asyncHandler(async (req, res) => {
       CONDITION_LABEL[r.found_condition] || r.found_condition,
       r.note, r.checked_by_name,
       r.checked_at ? new Date(r.checked_at).toISOString().slice(0, 16).replace('T', ' ') : '',
-    ].map(toCell).join(','));
+    ].map(toCsvCell).join(','));
   }
 
   await logAudit({

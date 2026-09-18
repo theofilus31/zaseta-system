@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -12,7 +11,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import Pagination from '../components/ui/Pagination.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { SearchInput, TextField, SelectField, TextareaField, FormError } from '../components/ui/Form.jsx';
+import { SearchInput, TextField, SearchableSelect, TextareaField, FormError } from '../components/ui/Form.jsx';
 
 /**
  * ============================================================================
@@ -26,6 +25,7 @@ import { SearchInput, TextField, SelectField, TextareaField, FormError } from '.
  */
 
 const CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
+const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label }));
 
 export default function ConsumableList() {
   const { can } = useAuth();
@@ -70,7 +70,7 @@ export default function ConsumableList() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         title="Barang Habis Pakai"
         description="Stok ATK, kebersihan, dan perlengkapan yang dipakai habis — bukan dipinjam-kembalikan."
@@ -184,7 +184,7 @@ export default function ConsumableList() {
       {showCreate && (
         <ConsumableFormModal onClose={() => setShowCreate(false)} onSaved={handleCreated} />
       )}
-    </Layout>
+    </>
   );
 }
 
@@ -249,12 +249,12 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SelectField label="Kategori" name="category" value={form.category} onChange={change}>
-            <option value="atk">ATK</option>
-            <option value="kebersihan">Kebersihan</option>
-            <option value="it_supplies">Perlengkapan IT</option>
-            <option value="lainnya">Lainnya</option>
-          </SelectField>
+          <SearchableSelect
+            label="Kategori" value={form.category} onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+            clearable={false}
+            options={CATEGORY_OPTIONS} getOptionLabel={(c) => c.label} getOptionValue={(c) => c.value}
+            placeholder="Cari kategori…"
+          />
           <TextField
             label="Satuan" name="unit" required
             value={form.unit} onChange={change}
@@ -268,10 +268,12 @@ export function ConsumableFormModal({ item, onClose, onSaved }) {
             value={form.minStock} onChange={change}
             hint="Muncul di lonceng Pemberitahuan begitu stok turun ke angka ini atau lebih rendah."
           />
-          <SelectField label="Lokasi Penyimpanan (opsional)" name="locationId" value={form.locationId} onChange={change}>
-            <option value="">— Tidak diatur —</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}
-          </SelectField>
+          <SearchableSelect
+            label="Lokasi Penyimpanan (opsional)" value={form.locationId}
+            onChange={(v) => setForm((f) => ({ ...f, locationId: v }))}
+            options={locations} getOptionLabel={(l) => `${l.code} — ${l.name}`}
+            placeholder="Cari lokasi…"
+          />
         </div>
 
         <TextareaField

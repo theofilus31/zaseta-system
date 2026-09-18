@@ -22,8 +22,9 @@ const listDepartments = asyncHandler(async (req, res) => {
     `SELECT d.id, d.code, d.name, d.description, d.is_active,
             (SELECT COUNT(*) FROM assets a WHERE a.department_id = d.id AND a.deleted_at IS NULL) AS asset_count
      FROM departments d
-     WHERE d.is_active = TRUE
-     ORDER BY d.name ASC`
+     WHERE d.tenant_id = :tenantId AND d.is_active = TRUE
+     ORDER BY d.name ASC`,
+    { tenantId: req.user.tenant_id }
   );
   res.json(rows.map((r) => ({ ...r, asset_count: Number(r.asset_count) || 0 })));
 });
@@ -31,6 +32,7 @@ const listDepartments = asyncHandler(async (req, res) => {
 // POST /api/departments
 const createDepartment = asyncHandler(async (req, res) => {
   const { code, name, description } = req.body;
+  const tenantId = req.user.tenant_id;
   if (!code || !name) {
     return res.status(400).json({ message: 'Kode dan nama departemen wajib diisi.' });
   }
@@ -42,7 +44,7 @@ const createDepartment = asyncHandler(async (req, res) => {
     });
   }
 
-  const [existing] = await pool.query(`SELECT id, is_active FROM departments WHERE code = :code`, { code: normalized });
+  const [existing] = await pool.query(`SELECT id, is_active FROM departments WHERE tenant_id = :tenantId AND code = :code`, { tenantId, code: normalized });
   if (existing[0]?.is_active) {
     return res.status(409).json({ message: `Kode departemen "${normalized}" sudah dipakai.` });
   }
@@ -58,8 +60,8 @@ const createDepartment = asyncHandler(async (req, res) => {
   }
 
   const [result] = await pool.query(
-    `INSERT INTO departments (code, name, description) VALUES (:code, :name, :description)`,
-    { code: normalized, name, description: description || null }
+    `INSERT INTO departments (tenant_id, code, name, description) VALUES (:tenantId, :code, :name, :description) RETURNING id`,
+    { tenantId, code: normalized, name, description: description || null }
   );
 
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'department', entityId: result.insertId, newValues: { code: normalized, name }, ipAddress: req.ip });
@@ -72,7 +74,7 @@ const updateDepartment = asyncHandler(async (req, res) => {
   const { name, description } = req.body;
   if (!name) return res.status(400).json({ message: 'Nama departemen wajib diisi.' });
 
-  const [existing] = await pool.query(`SELECT * FROM departments WHERE id = :id`, { id });
+  const [existing] = await pool.query(`SELECT * FROM departments WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId: req.user.tenant_id });
   if (!existing[0]) return res.status(404).json({ message: 'Departemen tidak ditemukan.' });
 
   await pool.query(
@@ -87,6 +89,10 @@ const updateDepartment = asyncHandler(async (req, res) => {
 // DELETE /api/departments/:id — nonaktifkan, bukan hapus permanen
 const deleteDepartment = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  const [rows] = await pool.query(`SELECT id FROM departments WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+  if (!rows[0]) return res.status(404).json({ message: 'Departemen tidak ditemukan.' });
 
   const [[used]] = await pool.query(
     `SELECT COUNT(*) AS total FROM assets WHERE department_id = :id AND deleted_at IS NULL`,
@@ -102,7 +108,7 @@ const deleteDepartment = asyncHandler(async (req, res) => {
     });
   }
 
-  await pool.query(`UPDATE departments SET is_active = FALSE WHERE id = :id`, { id });
+  await pool.query(`UPDATE departments SET is_active = FALSE WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'department', entityId: id, ipAddress: req.ip });
   res.json({ message: 'Departemen berhasil dinonaktifkan.' });
 });
@@ -110,7 +116,8 @@ const deleteDepartment = asyncHandler(async (req, res) => {
 // GET /api/departments/export
 const exportDepartments = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT code, name, description FROM departments WHERE is_active = TRUE ORDER BY name ASC`
+    `SELECT code, name, description FROM departments WHERE tenant_id = :tenantId AND is_active = TRUE ORDER BY name ASC`,
+    { tenantId: req.user.tenant_id }
   );
 
   const headers = ['Kode Departemen', 'Nama Departemen', 'Deskripsi'];
@@ -149,6 +156,7 @@ const importDepartments = asyncHandler(async (req, res) => {
     });
   }
 
+  const tenantId = req.user.tenant_id;
   const summary = {
     departmentsCreated: 0,
     departmentsReactivated: 0,
@@ -173,7 +181,7 @@ const importDepartments = asyncHandler(async (req, res) => {
 
     // Sengaja TIDAK filter is_active — perlu tahu juga kalau kode ini pernah dipakai departemen yang sudah dinonaktifkan,
     // supaya bisa diaktifkan kembali alih-alih dianggap "sudah ada" padahal tidak pernah muncul di dropdown/list.
-    const [existing] = await pool.query(`SELECT id, is_active FROM departments WHERE code = :code`, { code });
+    const [existing] = await pool.query(`SELECT id, is_active FROM departments WHERE tenant_id = :tenantId AND code = :code`, { tenantId, code });
     if (existing[0] && existing[0].is_active) {
       summary.skipped.push({ row: rowNum, reason: `Departemen "${code}" sudah aktif, tidak dibuat ulang.` });
       continue;
@@ -184,7 +192,7 @@ const importDepartments = asyncHandler(async (req, res) => {
       continue;
     }
 
-    await pool.query(`INSERT INTO departments (code, name) VALUES (:code, :name)`, { code, name });
+    await pool.query(`INSERT INTO departments (tenant_id, code, name) VALUES (:tenantId, :code, :name)`, { tenantId, code, name });
     summary.departmentsCreated++;
   }
 

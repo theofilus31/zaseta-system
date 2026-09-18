@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -101,18 +100,18 @@ export default function ConsumableDetail() {
 
   if (!item) {
     return (
-      <Layout>
+      <>
         <Skeleton className="h-7 w-64 mb-6" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <Card className="lg:col-span-2"><SkeletonRows rows={5} cols={4} /></Card>
           <Card><Skeleton className="h-40 w-full" /></Card>
         </div>
-      </Layout>
+      </>
     );
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         backTo="/consumables"
         backLabel="Barang Habis Pakai"
@@ -269,7 +268,7 @@ export default function ConsumableDetail() {
       {showIn && <StockInModal item={item} onClose={() => setShowIn(false)} onDone={afterStockChange} />}
       {showOut && <StockOutModal item={item} onClose={() => setShowOut(false)} onDone={afterStockChange} />}
       {showAdjust && <AdjustModal item={item} onClose={() => setShowAdjust(false)} onDone={afterStockChange} />}
-    </Layout>
+    </>
   );
 }
 

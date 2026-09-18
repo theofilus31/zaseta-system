@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { clampPagination } = require('../utils/pagination');
 
 /**
  * GET /api/audit-logs?action=&entityType=&userId=&search=&dateFrom=&dateTo=&page=&limit=
@@ -13,14 +14,11 @@ const asyncHandler = require('../utils/asyncHandler');
  * perbandingan sebelum/sesudah pada setiap perubahan.
  */
 const listAuditLogs = asyncHandler(async (req, res) => {
-  const {
-    action, entityType, userId, search = '',
-    dateFrom, dateTo, page = 1, limit = 25,
-  } = req.query;
-
-  const offset = (Number(page) - 1) * Number(limit);
-  const conditions = [];
-  const params = {};
+  const { action, entityType, userId, search = '', dateFrom, dateTo } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 25 });
+  const offset = (page - 1) * limit;
+  const conditions = ['al.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
 
   if (action) {
     conditions.push('al.action = :action');
@@ -36,7 +34,7 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   }
   if (search) {
     // Cari berdasarkan nama pelaku atau nomor entitas yang disentuh
-    conditions.push('(u.name LIKE :searchLike OR al.entity_id = :searchExact)');
+    conditions.push('(u.name ILIKE :searchLike OR al.entity_id = :searchExact)');
     params.searchLike = `%${search}%`;
     // entity_id bertipe angka; kirim 0 kalau kata kuncinya bukan angka agar tidak error
     params.searchExact = /^\d+$/.test(search) ? Number(search) : 0;
@@ -102,16 +100,21 @@ const listAuditLogs = asyncHandler(async (req, res) => {
  * tidak menawarkan pilihan yang pasti nihil hasilnya.
  */
 const getAuditFilters = asyncHandler(async (req, res) => {
+  const tenantId = req.user.tenant_id;
   const [actions] = await pool.query(
-    `SELECT DISTINCT action FROM audit_logs ORDER BY action ASC`
+    `SELECT DISTINCT action FROM audit_logs WHERE tenant_id = :tenantId ORDER BY action ASC`,
+    { tenantId }
   );
   const [entityTypes] = await pool.query(
-    `SELECT DISTINCT entity_type FROM audit_logs ORDER BY entity_type ASC`
+    `SELECT DISTINCT entity_type FROM audit_logs WHERE tenant_id = :tenantId ORDER BY entity_type ASC`,
+    { tenantId }
   );
   const [users] = await pool.query(
     `SELECT DISTINCT u.id, u.name
      FROM audit_logs al JOIN users u ON u.id = al.user_id
-     ORDER BY u.name ASC`
+     WHERE al.tenant_id = :tenantId
+     ORDER BY u.name ASC`,
+    { tenantId }
   );
 
   res.json({

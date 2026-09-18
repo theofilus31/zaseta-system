@@ -45,14 +45,20 @@ export function NotificationProvider({ children }) {
    * Tampilkan notifikasi mengambang di pojok kanan atas.
    * Hanya galat yang ikut disimpan ke riwayat — notifikasi sukses bersifat
    * sekali pakai dan tidak berguna untuk ditelusuri belakangan.
+   *
+   * `action` opsional ({ label, to }) — dipakai galat yang punya tindak
+   * lanjut jelas selain "tutup", mis. PLAN_LIMIT_REACHED yang selalu butuh
+   * CTA "Upgrade Plan" mengarah ke /billing (lihat pushLimitError di bawah
+   * dan ErrorToast.jsx yang merender tombolnya).
    */
-  const push = useCallback((message, type = 'error') => {
+  const push = useCallback((message, type = 'error', action = null) => {
     if (!message) return;
 
     const entry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       message,
       type,
+      action,
       time: new Date().toISOString(),
     };
 
@@ -68,9 +74,21 @@ export function NotificationProvider({ children }) {
     }, DURATION_MS[type] ?? DURATION_MS.info);
   }, []);
 
-  const pushError = useCallback((message) => push(message, 'error'), [push]);
+  const pushError = useCallback((message, action) => push(message, 'error', action), [push]);
   const pushSuccess = useCallback((message) => push(message, 'success'), [push]);
   const pushInfo = useCallback((message) => push(message, 'info'), [push]);
+
+  /** Galat batas paket (kode PLAN_LIMIT_REACHED dari planLimits.js) SELALU
+   *  dapat CTA "Upgrade Plan" — satu tempat supaya setiap form pembuatan
+   *  data (aset/pengguna/lokasi) tidak perlu menyusun action-nya sendiri. */
+  const pushLimitError = useCallback((err, fallbackMessage) => {
+    const data = err?.response?.data;
+    if (data?.code === 'PLAN_LIMIT_REACHED') {
+      push(data.message, 'error', { label: 'Upgrade Plan', to: data.upgradeUrl || '/billing' });
+    } else {
+      push(data?.message || fallbackMessage, 'error');
+    }
+  }, [push]);
 
   const clearHistory = useCallback(() => setHistory([]), []);
 
@@ -78,7 +96,7 @@ export function NotificationProvider({ children }) {
 
   return (
     <NotificationContext.Provider
-      value={{ history, toast, push, pushError, pushSuccess, pushInfo, dismissToast, clearHistory }}
+      value={{ history, toast, push, pushError, pushSuccess, pushInfo, pushLimitError, dismissToast, clearHistory }}
     >
       {children}
     </NotificationContext.Provider>

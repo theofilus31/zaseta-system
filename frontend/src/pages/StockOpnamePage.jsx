@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -11,7 +10,7 @@ import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import Pagination from '../components/ui/Pagination.jsx';
 import { SkeletonList } from '../components/ui/Skeleton.jsx';
-import { TextField, SelectField, TextareaField } from '../components/ui/Form.jsx';
+import { TextField, SearchableSelect, TextareaField } from '../components/ui/Form.jsx';
 import { OpnameProgressBar, OPNAME_STATUS } from '../components/opname/OpnameBits.jsx';
 
 /**
@@ -58,7 +57,7 @@ export default function StockOpnamePage() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         title="Stok Opname"
         description="Pemeriksaan fisik aset: cocokkan yang tercatat dengan yang benar-benar ada di ruangan."
@@ -116,7 +115,7 @@ export default function StockOpnamePage() {
       {showCreate && (
         <CreateOpnameModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
       )}
-    </Layout>
+    </>
   );
 }
 
@@ -204,6 +203,11 @@ function CreateOpnameModal({ onClose, onCreated }) {
     [k]: e.target.value,
     ...(k === 'locationId' ? { subLocationId: '' } : {}),
   }));
+  const setV = (k) => (value) => setForm((f) => ({
+    ...f,
+    [k]: value,
+    ...(k === 'locationId' ? { subLocationId: '' } : {}),
+  }));
 
   async function submit(e) {
     e.preventDefault();
@@ -247,28 +251,26 @@ function CreateOpnameModal({ onClose, onCreated }) {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SelectField label="Lokasi" value={form.locationId} onChange={set('locationId')}>
-            <option value="">Semua lokasi</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}
-          </SelectField>
+          <SearchableSelect
+            label="Lokasi" value={form.locationId} onChange={setV('locationId')}
+            options={locations} getOptionLabel={(l) => `${l.code} — ${l.name}`}
+            placeholder="Cari lokasi…" emptyLabel="Semua lokasi"
+          />
 
-          <SelectField
-            label="Sub Lokasi" value={form.subLocationId} onChange={set('subLocationId')}
+          <SearchableSelect
+            label="Sub Lokasi" value={form.subLocationId} onChange={setV('subLocationId')}
             disabled={!form.locationId}
             hint={!form.locationId ? 'Pilih lokasi lebih dulu.' : undefined}
-          >
-            <option value="">Semua sub lokasi</option>
-            {subLocations.map((s) => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-          </SelectField>
+            options={subLocations} getOptionLabel={(s) => `${s.code} — ${s.name}`}
+            placeholder="Cari sub lokasi…" emptyLabel="Semua sub lokasi"
+          />
         </div>
 
-        <SelectField
-          label="Kode Barang/Aset" value={form.categoryId} onChange={set('categoryId')}
+        <SearchableSelect
+          label="Kode Barang/Aset" value={form.categoryId} onChange={setV('categoryId')}
           hint="Kosongkan untuk memeriksa semua jenis barang di lokasi tersebut."
-        >
-          <option value="">Semua jenis</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </SelectField>
+          options={categories} placeholder="Cari kode barang/aset…" emptyLabel="Semua jenis"
+        />
 
         <TextareaField
           label="Catatan" value={form.notes} onChange={set('notes')}

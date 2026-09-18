@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -252,7 +251,7 @@ export default function AssetList() {
   const canManage = canCreate || canEditAssets || canDeleteAssets;
 
   return (
-    <Layout>
+    <>
       <PageHeader
         title="Daftar Aset"
         /* Jumlahnya tidak ditulis di sini: pagination.total mengikuti filter yang
@@ -374,6 +373,6 @@ export default function AssetList() {
           onClose={() => setShowImport(false)}
         />
       )}
-    </Layout>
+    </>
   );
 }

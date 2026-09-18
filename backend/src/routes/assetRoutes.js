@@ -6,6 +6,7 @@ const attachCtrl = require('../controllers/attachmentController');
 const reminderCtrl = require('../controllers/reminderController');
 const maintenanceCtrl = require('../controllers/maintenanceController');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { checkAssetLimit } = require('../middleware/planLimits');
 const upload = require('../middleware/upload');
 const uploadAttachment = require('../middleware/uploadAttachment');
 
@@ -16,9 +17,16 @@ router.get('/', requirePermission('assets', 'view'), ctrl.listAssets);
 router.get('/export', requirePermission('assets', 'view'), ctrl.exportAssets);
 // Juga harus sebelum '/:id' — "by-code" bukan id aset.
 router.get('/by-code/:code', requirePermission('assets', 'view'), ctrl.getAssetByCode);
-router.post('/import', requirePermission('assets', 'create'), upload.single('file'), ctrl.importAssets);
+router.post('/import', requirePermission('assets', 'create'), checkAssetLimit, upload.single('file'), ctrl.importAssets);
+
+// Tempat sampah — juga harus dideklarasikan SEBELUM '/:id', kalau tidak
+// Express akan menganggap "trash" sebagai id aset.
+router.get('/trash', requirePermission('trash', 'view'), ctrl.listTrash);
+router.put('/trash/:id/restore', requirePermission('trash', 'edit'), ctrl.restoreAsset);
+router.delete('/trash/:id', requirePermission('trash', 'delete'), ctrl.permanentDeleteAsset);
+
 router.get('/:id', requirePermission('assets', 'view'), ctrl.getAsset);
-router.post('/', requirePermission('assets', 'create'), ctrl.createAsset);
+router.post('/', requirePermission('assets', 'create'), checkAssetLimit, ctrl.createAsset);
 router.put('/:id', requirePermission('assets', 'edit'), ctrl.updateAsset);
 router.delete('/:id', requirePermission('assets', 'delete'), ctrl.deleteAsset);
 

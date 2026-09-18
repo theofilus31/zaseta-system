@@ -15,21 +15,23 @@ const asyncHandler = require('../utils/asyncHandler');
  * Semua angka mengecualikan aset terhapus (soft delete).
  */
 const getSummary = asyncHandler(async (req, res) => {
+  const tenantId = req.user.tenant_id;
+
   /* ---------- Hitungan pokok & keuangan ----------
      Digabung dalam satu query agar tidak menembak tabel assets berkali-kali.
      Aset berstatus "terjual" sudah keluar dari inventaris aktif, jadi nilainya
      TIDAK ikut dihitung sebagai nilai aset yang masih dimiliki. */
   const [[totals]] = await pool.query(`
     SELECT
-      COUNT(*)                                                          AS totalAssets,
-      SUM(status IN ('dipakai','idle'))                                 AS activeAssets,
-      SUM(status = 'terjual')                                           AS soldAssets,
+      COUNT(*)                                                          AS "totalAssets",
+      COUNT(*) FILTER (WHERE status IN ('dipakai','idle'))              AS "activeAssets",
+      COUNT(*) FILTER (WHERE status = 'terjual')                        AS "soldAssets",
       /* "Keluar" = sudah tidak dimiliki lagi: terjual, hilang, atau dihapuskan.
          Ketiganya tidak boleh ikut menambah nilai kekayaan yang tercatat. */
-      SUM(status IN ('terjual','hilang','dihapuskan'))                  AS retiredAssets,
-      COALESCE(SUM(CASE WHEN status NOT IN ('terjual','hilang','dihapuskan') THEN purchase_price END), 0) AS acquisitionValue,
-      COALESCE(SUM(CASE WHEN status = 'dijual'  THEN sale_value_net END), 0)  AS listedValue,
-      COALESCE(SUM(CASE WHEN status = 'terjual' THEN sold_price END), 0)      AS soldValue,
+      COUNT(*) FILTER (WHERE status IN ('terjual','hilang','dihapuskan')) AS "retiredAssets",
+      COALESCE(SUM(CASE WHEN status NOT IN ('terjual','hilang','dihapuskan') THEN purchase_price END), 0) AS "acquisitionValue",
+      COALESCE(SUM(CASE WHEN status = 'dijual'  THEN sale_value_net END), 0)  AS "listedValue",
+      COALESCE(SUM(CASE WHEN status = 'terjual' THEN sold_price END), 0)      AS "soldValue",
       /* Nilai buku = penyusutan garis lurus, dihitung langsung di SQL agar
          tidak perlu menarik seluruh baris aset ke aplikasi hanya untuk
          menjumlahkannya. Aset tanpa masa manfaat/tanggal beli dianggap belum
@@ -42,87 +44,92 @@ const getSummary = asyncHandler(async (req, res) => {
             ELSE GREATEST(
               COALESCE(salvage_value, 0),
               purchase_price - (purchase_price - COALESCE(salvage_value, 0))
-                * LEAST(TIMESTAMPDIFF(MONTH, purchase_date, CURDATE()) / useful_life_months, 1)
+                * LEAST((EXTRACT(YEAR FROM AGE(CURRENT_DATE, purchase_date)) * 12 + EXTRACT(MONTH FROM AGE(CURRENT_DATE, purchase_date))) / useful_life_months, 1)
             )
           END
         END
-      ), 0) AS bookValue
+      ), 0) AS "bookValue"
     FROM assets
-    WHERE deleted_at IS NULL
-  `);
+    WHERE deleted_at IS NULL AND tenant_id = :tenantId
+  `, { tenantId });
 
   /* ---------- Custody & garansi ----------
-     Dua sinyal operasional yang tidak terlihat dari status aset saja. */
+     Dua sinyal operasional yang tidak terlihat dari status aset saja.
+     asset_assignments tidak punya tenant_id langsung — dibatasi lewat
+     asset_id yang menunjuk ke assets milik tenant ini. */
   const [[custody]] = await pool.query(`
     SELECT
-      (SELECT COUNT(*) FROM asset_assignments WHERE returned_at IS NULL)                 AS assignedAssets,
-      (SELECT COUNT(DISTINCT holder_name) FROM asset_assignments WHERE returned_at IS NULL) AS activeHolders,
+      (SELECT COUNT(*) FROM asset_assignments g JOIN assets a2 ON a2.id = g.asset_id
+        WHERE g.returned_at IS NULL AND a2.tenant_id = :tenantId)                 AS "assignedAssets",
+      (SELECT COUNT(DISTINCT g.holder_name) FROM asset_assignments g JOIN assets a2 ON a2.id = g.asset_id
+        WHERE g.returned_at IS NULL AND a2.tenant_id = :tenantId)                 AS "activeHolders",
       (SELECT COUNT(*) FROM assets a
-        WHERE a.deleted_at IS NULL AND a.status = 'dipakai'
+        WHERE a.deleted_at IS NULL AND a.tenant_id = :tenantId AND a.status = 'dipakai'
           AND NOT EXISTS (SELECT 1 FROM asset_assignments g
-                          WHERE g.asset_id = a.id AND g.returned_at IS NULL))            AS inUseWithoutHolder
-  `);
+                          WHERE g.asset_id = a.id AND g.returned_at IS NULL))            AS "inUseWithoutHolder"
+  `, { tenantId });
 
   const [[warranty]] = await pool.query(`
     SELECT
-      SUM(warranty_expiry IS NOT NULL AND warranty_expiry < CURDATE())                   AS expired,
-      SUM(warranty_expiry >= CURDATE() AND warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))  AS expiring30,
-      SUM(warranty_expiry >  DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-          AND warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 90 DAY))                   AS expiring90,
-      SUM(warranty_expiry IS NULL)                                                       AS unknown
+      COUNT(*) FILTER (WHERE warranty_expiry IS NOT NULL AND warranty_expiry < CURRENT_DATE)                   AS expired,
+      COUNT(*) FILTER (WHERE warranty_expiry >= CURRENT_DATE AND warranty_expiry <= CURRENT_DATE + INTERVAL '30 days')  AS expiring30,
+      COUNT(*) FILTER (WHERE warranty_expiry >  CURRENT_DATE + INTERVAL '30 days'
+          AND warranty_expiry <= CURRENT_DATE + INTERVAL '90 days')                   AS expiring90,
+      COUNT(*) FILTER (WHERE warranty_expiry IS NULL)                                                       AS unknown
     FROM assets
-    WHERE deleted_at IS NULL AND status NOT IN ('terjual','hilang','dihapuskan')
-  `);
+    WHERE deleted_at IS NULL AND tenant_id = :tenantId AND status NOT IN ('terjual','hilang','dihapuskan')
+  `, { tenantId });
 
   /* Aset yang garansinya paling dekat berakhir — daftar tindak lanjut,
      bukan sekadar angka. */
   const [warrantySoon] = await pool.query(`
     SELECT id, asset_code, name, warranty_expiry,
-           DATEDIFF(warranty_expiry, CURDATE()) AS days_remaining
+           (warranty_expiry - CURRENT_DATE) AS days_remaining
     FROM assets
-    WHERE deleted_at IS NULL AND status NOT IN ('terjual','hilang','dihapuskan')
+    WHERE deleted_at IS NULL AND tenant_id = :tenantId AND status NOT IN ('terjual','hilang','dihapuskan')
       AND warranty_expiry IS NOT NULL
-      AND warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+      AND warranty_expiry <= CURRENT_DATE + INTERVAL '90 days'
     ORDER BY warranty_expiry ASC
     LIMIT 5
-  `);
+  `, { tenantId });
 
   const [topHolders] = await pool.query(`
-    SELECT holder_name, department, COUNT(*) AS total
-    FROM asset_assignments
-    WHERE returned_at IS NULL
-    GROUP BY holder_name, department
+    SELECT g.holder_name, g.department, COUNT(*) AS total
+    FROM asset_assignments g
+    JOIN assets a ON a.id = g.asset_id
+    WHERE g.returned_at IS NULL AND a.tenant_id = :tenantId
+    GROUP BY g.holder_name, g.department
     ORDER BY total DESC, holder_name ASC
     LIMIT 5
-  `);
+  `, { tenantId });
 
   /* ---------- Hal yang butuh perhatian ----------
      Setiap angka di sini harus bisa ditindaklanjuti — di frontend masing-masing
      jadi tautan ke Daftar Aset yang sudah terfilter. */
   const [[attention]] = await pool.query(`
     SELECT
-      SUM(condition_status = 'rusak_berat')                AS rusakBerat,
-      SUM(condition_status = 'rusak_ringan')               AS rusakRingan,
-      SUM(status = 'dipindah')                             AS inTransit,
-      SUM(status = 'dijual')                               AS listedForSale,
-      SUM(status = 'hilang')                               AS lost,
-      SUM(location_id IS NULL)                             AS withoutLocation,
-      SUM(status = 'idle' AND condition_status = 'baik')   AS readyToDeploy
+      COUNT(*) FILTER (WHERE condition_status = 'rusak_berat')                AS "rusakBerat",
+      COUNT(*) FILTER (WHERE condition_status = 'rusak_ringan')               AS "rusakRingan",
+      COUNT(*) FILTER (WHERE status = 'dipindah')                             AS "inTransit",
+      COUNT(*) FILTER (WHERE status = 'dijual')                               AS "listedForSale",
+      COUNT(*) FILTER (WHERE status = 'hilang')                               AS lost,
+      COUNT(*) FILTER (WHERE location_id IS NULL)                             AS "withoutLocation",
+      COUNT(*) FILTER (WHERE status = 'idle' AND condition_status = 'baik')   AS "readyToDeploy"
     FROM assets
-    WHERE deleted_at IS NULL
-  `);
+    WHERE deleted_at IS NULL AND tenant_id = :tenantId
+  `, { tenantId });
 
   const [byStatus] = await pool.query(`
     SELECT status, COUNT(*) AS total
-    FROM assets WHERE deleted_at IS NULL
+    FROM assets WHERE deleted_at IS NULL AND tenant_id = :tenantId
     GROUP BY status
-  `);
+  `, { tenantId });
 
   const [byCondition] = await pool.query(`
     SELECT condition_status, COUNT(*) AS total
-    FROM assets WHERE deleted_at IS NULL
+    FROM assets WHERE deleted_at IS NULL AND tenant_id = :tenantId
     GROUP BY condition_status
-  `);
+  `, { tenantId });
 
   /* Hanya kategori/lokasi yang benar-benar punya aset yang dikirim — daftar
      panjang berisi angka nol tidak membantu siapa pun. */
@@ -130,21 +137,23 @@ const getSummary = asyncHandler(async (req, res) => {
     SELECT c.id AS category_id, c.name AS category_name, COUNT(a.id) AS total
     FROM asset_categories c
     JOIN assets a ON a.category_id = c.id AND a.deleted_at IS NULL
+    WHERE c.tenant_id = :tenantId
     GROUP BY c.id
     ORDER BY total DESC
     LIMIT 8
-  `);
+  `, { tenantId });
 
   const [byLocation] = await pool.query(`
     SELECT l.id AS location_id, l.code AS location_code, l.name AS location_name,
            COUNT(a.id) AS total,
-           SUM(a.condition_status <> 'baik') AS damaged
+           COUNT(*) FILTER (WHERE a.condition_status <> 'baik') AS damaged
     FROM locations l
     JOIN assets a ON a.location_id = l.id AND a.deleted_at IS NULL
+    WHERE l.tenant_id = :tenantId
     GROUP BY l.id
     ORDER BY total DESC
     LIMIT 8
-  `);
+  `, { tenantId });
 
   /* Sebaran per departemen — format laporan yang paling sering diminta di
      lingkungan General Affairs. Aset tanpa departemen ikut dihitung terpisah
@@ -155,14 +164,15 @@ const getSummary = asyncHandler(async (req, res) => {
            COALESCE(SUM(CASE WHEN a.status NOT IN ('terjual','hilang','dihapuskan') THEN a.purchase_price END), 0) AS value
     FROM departments d
     JOIN assets a ON a.department_id = d.id AND a.deleted_at IS NULL
+    WHERE d.tenant_id = :tenantId
     GROUP BY d.id
     ORDER BY total DESC
     LIMIT 8
-  `);
+  `, { tenantId });
 
   const [[unassignedDept]] = await pool.query(`
-    SELECT COUNT(*) AS total FROM assets WHERE deleted_at IS NULL AND department_id IS NULL
-  `);
+    SELECT COUNT(*) AS total FROM assets WHERE deleted_at IS NULL AND tenant_id = :tenantId AND department_id IS NULL
+  `, { tenantId });
 
   /* Aset yang paling lama tidak tersentuh — kandidat untuk diverifikasi
      keberadaannya saat stok opname. */
@@ -171,18 +181,19 @@ const getSummary = asyncHandler(async (req, res) => {
            l.name AS location_name
     FROM assets a
     LEFT JOIN locations l ON l.id = a.location_id
-    WHERE a.deleted_at IS NULL AND a.status IN ('dipakai','idle')
+    WHERE a.deleted_at IS NULL AND a.tenant_id = :tenantId AND a.status IN ('dipakai','idle')
     ORDER BY a.updated_at ASC
     LIMIT 5
-  `);
+  `, { tenantId });
 
   const [recentActivity] = await pool.query(`
     SELECT al.action, al.entity_type, al.entity_id, al.created_at, u.name AS user_name
     FROM audit_logs al
     LEFT JOIN users u ON u.id = al.user_id
+    WHERE al.tenant_id = :tenantId
     ORDER BY al.created_at DESC
     LIMIT 8
-  `);
+  `, { tenantId });
 
   res.json({
     totals: {

@@ -4,6 +4,7 @@ import axiosClient from '../../api/axiosClient.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useNotification } from '../../context/NotificationContext.jsx';
 import Button from '../ui/Button.jsx';
+import { SearchableSelect } from '../ui/Form.jsx';
 import StatusBadge, { ConditionBadge } from '../ui/StatusBadge.jsx';
 import { ResultBadge } from '../opname/OpnameBits.jsx';
 import { CheckOutModal, CheckInModal } from './AssignmentModals.jsx';
@@ -129,7 +130,7 @@ export default function ScanActionPanel({ asset, onRefresh }) {
           <i className="fas fa-user-shield" aria-hidden="true" />
           Mode Petugas · {user?.name}
         </div>
-        <h1 className="text-lg font-bold text-white leading-tight mt-1.5 break-words">{asset.name}</h1>
+        <h1 className="text-lg font-black text-white leading-tight mt-1.5 break-words">{asset.name}</h1>
         <p className="text-[13px] font-mono text-white/80 mt-1">{asset.asset_code}</p>
       </div>
 
@@ -211,18 +212,16 @@ export default function ScanActionPanel({ asset, onRefresh }) {
         {/* ---------- Aksi cepat ---------- */}
         {canEdit && !isRetired && (
           <div className="space-y-4 pt-1">
-            <div>
-              <label className="label">Ubah Kondisi Fisik</label>
-              <select
-                value={asset.condition_status || 'baik'}
-                onChange={(e) => handleConditionChange(e.target.value)}
-                disabled={savingCondition}
-                className="field-select"
-              >
-                {CONDITION_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-              <p className="hint">Tersimpan begitu pilihan diganti — tidak perlu tombol simpan.</p>
-            </div>
+            <SearchableSelect
+              label="Ubah Kondisi Fisik"
+              value={asset.condition_status || 'baik'}
+              onChange={handleConditionChange}
+              disabled={savingCondition}
+              clearable={false}
+              hint="Tersimpan begitu pilihan diganti — tidak perlu tombol simpan."
+              options={CONDITION_OPTIONS} getOptionLabel={(c) => c.label} getOptionValue={(c) => c.value}
+              placeholder="Cari kondisi…"
+            />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowMove(true)}>

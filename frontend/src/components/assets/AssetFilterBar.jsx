@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { STATUS_CONFIG, CONDITION_CONFIG } from '../ui/StatusBadge.jsx';
 import Button from '../ui/Button.jsx';
-import { SearchInput, Select } from '../ui/Form.jsx';
+import { SearchInput, SearchableSelect } from '../ui/Form.jsx';
 import axiosClient from '../../api/axiosClient.js';
 
 /**
@@ -32,6 +32,7 @@ export default function AssetFilterBar({
   const [subLocations, setSubLocations] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [expanded, setExpanded] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
 
   useEffect(() => {
     axiosClient.get('/locations').then((res) => setLocations(res.data));
@@ -75,15 +76,17 @@ export default function AssetFilterBar({
           </span>
 
           <div className="flex flex-wrap items-center gap-2 ml-auto">
-            <Select
-              onChange={(e) => { if (e.target.value) { onBulkStatusChange(e.target.value); e.target.value = ''; } }}
-              defaultValue=""
+            <SearchableSelect
+              value={bulkStatus}
+              onChange={(v) => { if (v) { onBulkStatusChange(v); setBulkStatus(''); } }}
+              options={BULK_STATUS_OPTIONS.map(([k, v]) => ({ key: k, label: v.label }))}
+              getOptionLabel={(o) => o.label} getOptionValue={(o) => o.key}
+              clearable={false}
+              placeholder="Ubah status ke…"
               aria-label="Ubah status aset terpilih"
-              className="!w-auto !py-2 !text-[13px]"
-            >
-              <option value="" disabled>Ubah status ke…</option>
-              {BULK_STATUS_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </Select>
+              className="w-44"
+              inputClassName="!py-2 !text-[13px]"
+            />
 
             <Button variant="secondary" size="sm" onClick={onSellAssets}>
               <i className="fas fa-tag text-[11px]" aria-hidden="true" /> Dijual
@@ -107,10 +110,12 @@ export default function AssetFilterBar({
   }
 
   /* ===================== MODE FILTER ===================== */
-  const selectClass = 'field-select field-sunken !py-2.5 !text-[13px] w-full';
-
   return (
-    <div className="mb-4 rounded-2xl border border-ink-200/70 bg-white shadow-card overflow-hidden">
+    /* TANPA overflow-hidden: dropdown SearchableSelect di baris filter
+       berposisi absolute dan meluas ke bawah batas kartu ini — overflow-hidden
+       akan memotongnya. Sudut kartu tetap terlihat membulat karena setiap
+       anak langsungnya berwarna putih/senada, tidak ada yang perlu dipotong. */
+    <div className="mb-4 rounded-2xl border border-ink-200/70 bg-white shadow-card">
       {/* Baris utama: pencarian + status + tombol filter lanjutan */}
       <div className="flex flex-col sm:flex-row gap-2.5 p-3">
         <SearchInput
@@ -121,15 +126,14 @@ export default function AssetFilterBar({
           containerClassName="flex-1 min-w-0"
         />
 
-        <select
-          value={status}
-          onChange={(e) => onStatusChange(e.target.value)}
+        <SearchableSelect
+          value={status} onChange={onStatusChange}
+          options={Object.entries(STATUS_CONFIG).map(([k, v]) => ({ key: k, label: v.label }))}
+          getOptionLabel={(o) => o.label} getOptionValue={(o) => o.key}
+          placeholder="Semua Status" emptyLabel="Semua Status"
           aria-label="Filter status"
-          className={`${selectClass} sm:w-44`}
-        >
-          <option value="">Semua Status</option>
-          {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
+          sunken className="sm:w-44" inputClassName="!py-2.5 !text-[13px]"
+        />
 
         <Button
           variant={expanded || activeFilterCount > 0 ? 'subtle' : 'secondary'}
@@ -153,59 +157,50 @@ export default function AssetFilterBar({
       {expanded && (
         <div className="border-t border-ink-200/70 bg-ink-50/60 px-3 py-3.5 animate-slide-down">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Kondisi Fisik</span>
-              <select value={condition} onChange={(e) => onConditionChange(e.target.value)} className={selectClass}>
-                <option value="">Semua Kondisi</option>
-                {Object.entries(CONDITION_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Kondisi Fisik" value={condition} onChange={onConditionChange} searchable={false}
+              options={Object.entries(CONDITION_CONFIG).map(([k, v]) => ({ key: k, label: v.label }))}
+              getOptionLabel={(o) => o.label} getOptionValue={(o) => o.key}
+              placeholder="Semua Kondisi" emptyLabel="Semua Kondisi"
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
 
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Departemen</span>
-              <select value={departmentId} onChange={(e) => onDepartmentChange(e.target.value)} className={selectClass}>
-                <option value="">Semua Departemen</option>
-                <option value="none">— Tanpa Departemen —</option>
-                {departments.map((d) => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Departemen" value={departmentId} onChange={onDepartmentChange}
+              options={[{ id: 'none', name: '— Tanpa Departemen —' }, ...departments.map((d) => ({ id: d.id, name: `${d.code} · ${d.name}` }))]}
+              placeholder="Semua Departemen" emptyLabel="Semua Departemen"
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
 
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Kategori Aset</span>
-              <select value={assetTypeId} onChange={(e) => onAssetTypeChange(e.target.value)} className={selectClass}>
-                <option value="">Semua Kategori Aset</option>
-                {assetTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Kategori Aset" value={assetTypeId} onChange={onAssetTypeChange}
+              options={assetTypes}
+              placeholder="Semua Kategori Aset" emptyLabel="Semua Kategori Aset"
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
 
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Kode Barang/Aset</span>
-              <select value={categoryId} onChange={(e) => onCategoryChange(e.target.value)} className={selectClass}>
-                <option value="">Semua Kode Barang</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Kode Barang/Aset" value={categoryId} onChange={onCategoryChange}
+              options={categories}
+              placeholder="Semua Kode Barang" emptyLabel="Semua Kode Barang"
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
 
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Lokasi</span>
-              <select value={locationId} onChange={(e) => handleLocationChange(e.target.value)} className={selectClass}>
-                <option value="">Semua Lokasi</option>
-                {locations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Lokasi" value={locationId} onChange={handleLocationChange}
+              options={locations.map((l) => ({ id: l.id, name: `${l.code} · ${l.name}` }))}
+              placeholder="Semua Lokasi" emptyLabel="Semua Lokasi"
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
 
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Sub Lokasi</span>
-              <select
-                value={subLocationId}
-                onChange={(e) => onSubLocationChange(e.target.value)}
-                disabled={!locationId}
-                className={`${selectClass} disabled:bg-ink-100 disabled:text-ink-400 disabled:cursor-not-allowed`}
-              >
-                <option value="">{locationId ? 'Semua Sub Lokasi' : 'Pilih lokasi dahulu'}</option>
-                {subLocations.map((sl) => <option key={sl.id} value={sl.id}>{sl.code} · {sl.name}</option>)}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Sub Lokasi" value={subLocationId} onChange={onSubLocationChange}
+              disabled={!locationId}
+              options={subLocations.map((sl) => ({ id: sl.id, name: `${sl.code} · ${sl.name}` }))}
+              placeholder={locationId ? 'Semua Sub Lokasi' : 'Pilih lokasi dahulu'}
+              emptyLabel={locationId ? 'Semua Sub Lokasi' : 'Pilih lokasi dahulu'}
+              sunken inputClassName="!py-2.5 !text-[13px]"
+            />
           </div>
 
           {activeFilterCount > 0 && (

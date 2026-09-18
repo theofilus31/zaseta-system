@@ -106,7 +106,7 @@ const chat = asyncHandler(async (req, res) => {
     if (!rows[0]) return res.status(404).json({ message: 'Percakapan tidak ditemukan.' });
   } else {
     const [result] = await pool.query(
-      `INSERT INTO chat_conversations (user_id, title) VALUES (:userId, :title)`,
+      `INSERT INTO chat_conversations (user_id, title) VALUES (:userId, :title) RETURNING id`,
       { userId: req.user.id, title: toTitle(trimmedMessage) }
     );
     convId = result.insertId;
@@ -126,7 +126,7 @@ const chat = asyncHandler(async (req, res) => {
   );
   const history = historyRows.reverse().slice(0, -1).map((r) => ({ role: r.role, content: r.content }));
 
-  /* Kalau Ollama tidak menyala/timeout, handleMessage() melempar error.
+  /* Kalau Gemini API gagal/timeout, handleMessage() melempar error.
      Pesan pengguna yang sudah tersimpan di atas TETAP ada (supaya tidak
      hilang) — dulu kegagalan di sini membuat percakapan "menggantung" tanpa
      balasan sama sekali (pengguna yang reload melihat pesannya sendiri tanpa
@@ -139,7 +139,8 @@ const chat = asyncHandler(async (req, res) => {
   } catch (err) {
     const [insertResult] = await pool.query(
       `INSERT INTO chat_messages (conversation_id, role, content, intent, action_status)
-       VALUES (:convId, 'assistant', :content, 'error', 'none')`,
+       VALUES (:convId, 'assistant', :content, 'error', 'none')
+       RETURNING id`,
       { convId, content: err.message || 'Zecode tidak bisa merespons sekarang.' }
     );
     await pool.query(`UPDATE chat_conversations SET updated_at = NOW() WHERE id = :convId`, { convId });
@@ -149,7 +150,8 @@ const chat = asyncHandler(async (req, res) => {
 
   const [insertResult] = await pool.query(
     `INSERT INTO chat_messages (conversation_id, role, content, intent, action_type, action_payload, action_status)
-     VALUES (:convId, 'assistant', :content, :intent, :actionType, :actionPayload, :actionStatus)`,
+     VALUES (:convId, 'assistant', :content, :intent, :actionType, :actionPayload, :actionStatus)
+     RETURNING id`,
     {
       convId, content: result.text, intent: result.intent || null,
       actionType: result.action?.type || null,
@@ -203,7 +205,7 @@ const confirmAction = asyncHandler(async (req, res) => {
   let newStatus = 'confirmed';
   try {
     const created = await performCreateRequest({
-      ...payload, userId: req.user.id, ip: req.ip,
+      ...payload, tenantId: req.user.tenant_id, userId: req.user.id, ip: req.ip,
     });
     resultText = `Permintaan ${created.requestNo} berhasil diajukan untuk ${created.requesterName}. GA akan meninjaunya.`;
   } catch (err) {
@@ -214,7 +216,7 @@ const confirmAction = asyncHandler(async (req, res) => {
   await pool.query(`UPDATE chat_messages SET action_status = :status WHERE id = :id`, { id, status: newStatus });
 
   const [insertResult] = await pool.query(
-    `INSERT INTO chat_messages (conversation_id, role, content, intent) VALUES (:convId, 'assistant', :content, 'action_result')`,
+    `INSERT INTO chat_messages (conversation_id, role, content, intent) VALUES (:convId, 'assistant', :content, 'action_result') RETURNING id`,
     { convId: row.conversation_id, content: resultText }
   );
   await pool.query(`UPDATE chat_conversations SET updated_at = NOW() WHERE id = :convId`, { convId: row.conversation_id });
@@ -237,7 +239,7 @@ const cancelAction = asyncHandler(async (req, res) => {
   await pool.query(`UPDATE chat_messages SET action_status = 'cancelled' WHERE id = :id`, { id });
 
   const [insertResult] = await pool.query(
-    `INSERT INTO chat_messages (conversation_id, role, content) VALUES (:convId, 'assistant', 'Baik, dibatalkan.')`,
+    `INSERT INTO chat_messages (conversation_id, role, content) VALUES (:convId, 'assistant', 'Baik, dibatalkan.') RETURNING id`,
     { convId: row.conversation_id }
   );
   await pool.query(`UPDATE chat_conversations SET updated_at = NOW() WHERE id = :convId`, { convId: row.conversation_id });

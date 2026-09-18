@@ -8,7 +8,7 @@ export default function QrLabelDesign({ asset, sizeCm }) {
   // Proporsi elemen di dalam kartu disesuaikan mengikuti ukuran kartu yang dipilih
   const padding = sizeCm * 0.05;       // ~5% dari ukuran kartu
   const qrSize = sizeCm * 0.63;        // QR mengambil ~63% dari ukuran kartu
-  const labelFontPt = sizeCm * 1.8;    // font label "Kode Batang Aset"
+  const labelFontPt = sizeCm * 1.8;    // font nama aset
   const codeFontPt = sizeCm * 1.65;    // font kode aset
 
   return (
@@ -30,8 +30,14 @@ export default function QrLabelDesign({ asset, sizeCm }) {
         overflow: 'hidden',
       }}
     >
-      <p style={{ fontSize: `${labelFontPt}pt`, fontWeight: 700, margin: 0, lineHeight: 1.1, textAlign: 'center' }}>
-        Kode Batang Aset
+      <p
+        style={{
+          fontSize: `${labelFontPt}pt`, fontWeight: 700, margin: 0, lineHeight: 1.15, textAlign: 'center',
+          wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+        }}
+      >
+        {asset.name}
       </p>
       <img
         src={asset.image_path}

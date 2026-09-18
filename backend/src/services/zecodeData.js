@@ -37,11 +37,11 @@ function noneFound(subject) {
 }
 
 // ---------------------------------------------------------------------------
-async function asset_search({ keyword, status, condition }) {
-  const conditions = ['a.deleted_at IS NULL'];
-  const params = {};
+async function asset_search({ keyword, status, condition }, tenantId) {
+  const conditions = ['a.deleted_at IS NULL', 'a.tenant_id = :tenantId'];
+  const params = { tenantId };
   if (keyword) {
-    conditions.push('(a.name LIKE :kw OR a.asset_code LIKE :kw OR a.brand LIKE :kw OR a.model LIKE :kw OR a.serial_number LIKE :kw)');
+    conditions.push('(a.name ILIKE :kw OR a.asset_code ILIKE :kw OR a.brand ILIKE :kw OR a.model ILIKE :kw OR a.serial_number ILIKE :kw)');
     params.kw = `%${keyword}%`;
   }
   if (status && STATUS_LABEL[status]) { conditions.push('a.status = :status'); params.status = status; }
@@ -72,7 +72,7 @@ async function asset_search({ keyword, status, condition }) {
 }
 
 // ---------------------------------------------------------------------------
-async function asset_detail({ keyword }) {
+async function asset_detail({ keyword }, tenantId) {
   if (!keyword) return { text: 'Sebutkan nama atau kode aset yang ingin dicari.' };
 
   const [rows] = await pool.query(
@@ -83,9 +83,9 @@ async function asset_detail({ keyword }) {
      LEFT JOIN sub_locations sl ON sl.id = a.sub_location_id
      LEFT JOIN departments d ON d.id = a.department_id
      LEFT JOIN asset_assignments asg ON asg.asset_id = a.id AND asg.returned_at IS NULL
-     WHERE a.deleted_at IS NULL AND (a.name LIKE :kw OR a.asset_code LIKE :kw)
+     WHERE a.tenant_id = :tenantId AND a.deleted_at IS NULL AND (a.name ILIKE :kw OR a.asset_code ILIKE :kw)
      ORDER BY a.updated_at DESC LIMIT 1`,
-    { kw: `%${keyword}%` }
+    { tenantId, kw: `%${keyword}%` }
   );
   const a = rows[0];
   if (!a) return { text: noneFound(`aset bernama/berkode "${keyword}"`), link: '/assets' };
@@ -108,16 +108,16 @@ async function asset_detail({ keyword }) {
 }
 
 // ---------------------------------------------------------------------------
-async function holder_lookup({ holder_name }) {
+async function holder_lookup({ holder_name }, tenantId) {
   if (!holder_name) return { text: 'Sebutkan nama orang yang ingin dicari aset yang dipegangnya.' };
 
   const [rows] = await pool.query(
     `SELECT a.asset_code, a.name, asg.holder_name, asg.department, asg.assigned_at
      FROM asset_assignments asg
      JOIN assets a ON a.id = asg.asset_id
-     WHERE asg.returned_at IS NULL AND asg.holder_name LIKE :kw
+     WHERE a.tenant_id = :tenantId AND asg.returned_at IS NULL AND asg.holder_name ILIKE :kw
      ORDER BY asg.assigned_at DESC LIMIT ${MAX_ROWS}`,
-    { kw: `%${holder_name}%` }
+    { tenantId, kw: `%${holder_name}%` }
   );
   if (rows.length === 0) return { text: noneFound(`aset yang dipegang "${holder_name}"`), link: '/assets' };
 
@@ -126,13 +126,14 @@ async function holder_lookup({ holder_name }) {
 }
 
 // ---------------------------------------------------------------------------
-async function warranty_soon() {
+async function warranty_soon(params, tenantId) {
   const [rows] = await pool.query(
-    `SELECT asset_code, name, warranty_expiry, DATEDIFF(warranty_expiry, CURDATE()) AS days_remaining
+    `SELECT asset_code, name, warranty_expiry, (warranty_expiry - CURRENT_DATE) AS days_remaining
      FROM assets
-     WHERE deleted_at IS NULL AND status NOT IN ('${RETIRED_STATUSES.join("','")}')
-       AND warranty_expiry IS NOT NULL AND warranty_expiry <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
-     ORDER BY warranty_expiry ASC LIMIT ${MAX_ROWS + 1}`
+     WHERE tenant_id = :tenantId AND deleted_at IS NULL AND status NOT IN ('${RETIRED_STATUSES.join("','")}')
+       AND warranty_expiry IS NOT NULL AND warranty_expiry <= CURRENT_DATE + INTERVAL '90 days'
+     ORDER BY warranty_expiry ASC LIMIT ${MAX_ROWS + 1}`,
+    { tenantId }
   );
   if (rows.length === 0) return { text: 'Tidak ada aset yang garansinya akan berakhir dalam 90 hari ke depan. Semua aman.', link: '/dashboard' };
 
@@ -147,11 +148,12 @@ async function warranty_soon() {
 }
 
 // ---------------------------------------------------------------------------
-async function low_stock() {
+async function low_stock(params, tenantId) {
   const [rows] = await pool.query(
     `SELECT code, name, unit, current_stock, min_stock
-     FROM consumables WHERE is_active = TRUE AND current_stock <= min_stock
-     ORDER BY (CAST(current_stock AS SIGNED) - CAST(min_stock AS SIGNED)) ASC LIMIT ${MAX_ROWS + 1}`
+     FROM consumables WHERE tenant_id = :tenantId AND is_active = TRUE AND current_stock <= min_stock
+     ORDER BY (CAST(current_stock AS INTEGER) - CAST(min_stock AS INTEGER)) ASC LIMIT ${MAX_ROWS + 1}`,
+    { tenantId }
   );
   if (rows.length === 0) return { text: 'Tidak ada barang habis pakai yang stoknya di bawah ambang minimum. Semua aman.', link: '/consumables' };
 
@@ -162,11 +164,12 @@ async function low_stock() {
 }
 
 // ---------------------------------------------------------------------------
-async function pending_requests() {
+async function pending_requests(params, tenantId) {
   const [rows] = await pool.query(
     `SELECT request_no, requester_name, item_name, priority, created_at
-     FROM asset_requests WHERE status = 'diajukan'
-     ORDER BY created_at ASC LIMIT ${MAX_ROWS + 1}`
+     FROM asset_requests WHERE tenant_id = :tenantId AND status = 'diajukan'
+     ORDER BY created_at ASC LIMIT ${MAX_ROWS + 1}`,
+    { tenantId }
   );
   if (rows.length === 0) return { text: 'Tidak ada permintaan aset yang menunggu ditinjau saat ini.', link: '/requests' };
 
@@ -178,22 +181,25 @@ async function pending_requests() {
 }
 
 // ---------------------------------------------------------------------------
-async function dashboard_summary() {
+async function dashboard_summary(params, tenantId) {
   const [[totals]] = await pool.query(`
     SELECT
-      COUNT(*) AS totalAssets,
-      SUM(status IN ('dipakai','idle')) AS activeAssets,
-      COALESCE(SUM(CASE WHEN status NOT IN ('${RETIRED_STATUSES.join("','")}') THEN purchase_price END), 0) AS acquisitionValue
-    FROM assets WHERE deleted_at IS NULL
-  `);
+      COUNT(*) AS "totalAssets",
+      COUNT(*) FILTER (WHERE status IN ('dipakai','idle')) AS "activeAssets",
+      COALESCE(SUM(CASE WHEN status NOT IN ('${RETIRED_STATUSES.join("','")}') THEN purchase_price END), 0) AS "acquisitionValue"
+    FROM assets WHERE tenant_id = :tenantId AND deleted_at IS NULL
+  `, { tenantId });
   const [[custody]] = await pool.query(
-    `SELECT COUNT(*) AS assignedAssets FROM asset_assignments WHERE returned_at IS NULL`
+    `SELECT COUNT(*) AS "assignedAssets" FROM asset_assignments asg JOIN assets a ON a.id = asg.asset_id WHERE a.tenant_id = :tenantId AND asg.returned_at IS NULL`,
+    { tenantId }
   );
   const [[lowStockCount]] = await pool.query(
-    `SELECT COUNT(*) AS c FROM consumables WHERE is_active = TRUE AND current_stock <= min_stock`
+    `SELECT COUNT(*) AS c FROM consumables WHERE tenant_id = :tenantId AND is_active = TRUE AND current_stock <= min_stock`,
+    { tenantId }
   );
   const [[pendingCount]] = await pool.query(
-    `SELECT COUNT(*) AS c FROM asset_requests WHERE status = 'diajukan'`
+    `SELECT COUNT(*) AS c FROM asset_requests WHERE tenant_id = :tenantId AND status = 'diajukan'`,
+    { tenantId }
   );
 
   const text = [

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -12,7 +11,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import Pagination from '../components/ui/Pagination.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { SearchInput, TextField, SelectField, TextareaField, FormError } from '../components/ui/Form.jsx';
+import { SearchInput, TextField, SearchableSelect, DateField, TextareaField, FormError } from '../components/ui/Form.jsx';
 
 /**
  * ============================================================================
@@ -48,6 +47,16 @@ export default function RequestList() {
 
   const canCreate = can('requests', 'create');
 
+  async function salinTautanPublik() {
+    const url = `${window.location.origin}/ajukan-permintaan`;
+    try {
+      await navigator.clipboard.writeText(url);
+      pushSuccess('Tautan publik disalin. Bagikan ke karyawan yang ingin mengajukan permintaan aset.');
+    } catch {
+      pushError('Gagal menyalin tautan. Salin manual: ' + url);
+    }
+  }
+
   const muat = useCallback(async () => {
     setLoading(true);
     try {
@@ -74,14 +83,21 @@ export default function RequestList() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         title="Permintaan Aset"
         description="Pengajuan kebutuhan aset dari karyawan — ditinjau sebelum dipenuhi."
-        actions={canCreate && (
-          <Button onClick={() => setShowCreate(true)}>
-            <i className="fas fa-plus text-xs" aria-hidden="true" /> Ajukan Permintaan
-          </Button>
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={salinTautanPublik}>
+              <i className="fas fa-link text-xs" aria-hidden="true" /> Salin Tautan Publik
+            </Button>
+            {canCreate && (
+              <Button onClick={() => setShowCreate(true)}>
+                <i className="fas fa-plus text-xs" aria-hidden="true" /> Ajukan Permintaan
+              </Button>
+            )}
+          </div>
         )}
       />
 
@@ -126,7 +142,7 @@ export default function RequestList() {
             <table className="table-base min-w-[720px]">
               <thead>
                 <tr>
-                  <th>No. Permintaan</th>
+                  <th>Nomor Permintaan</th>
                   <th>Barang Diminta</th>
                   <th>Peminta</th>
                   <th>Prioritas</th>
@@ -176,7 +192,7 @@ export default function RequestList() {
       {showCreate && (
         <CreateRequestModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
       )}
-    </Layout>
+    </>
   );
 }
 
@@ -195,6 +211,7 @@ function CreateRequestModal({ onClose, onCreated }) {
   }, []);
 
   const change = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const changeCategoryId = (id) => setForm((f) => ({ ...f, categoryId: id }));
 
   async function submit(e) {
     e.preventDefault();
@@ -247,22 +264,30 @@ function CreateRequestModal({ onClose, onCreated }) {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SelectField
-            label="Kode Barang/Aset (opsional)" name="categoryId" value={form.categoryId} onChange={change}
+          <SearchableSelect
+            id="categoryId"
+            label="Kode Barang/Aset (opsional)"
             hint="Membantu GA mencari calon aset yang tepat saat memenuhi."
-          >
-            <option value="">— Tidak diatur —</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </SelectField>
-          <SelectField label="Prioritas" name="priority" value={form.priority} onChange={change}>
-            <option value="rendah">Rendah</option>
-            <option value="sedang">Sedang</option>
-            <option value="tinggi">Tinggi</option>
-          </SelectField>
+            placeholder="Ketik untuk mencari kode barang…"
+            value={form.categoryId}
+            onChange={changeCategoryId}
+            options={categories}
+          />
+          <SearchableSelect
+            label="Prioritas" value={form.priority} onChange={(v) => setForm((f) => ({ ...f, priority: v }))}
+            clearable={false} searchable={false}
+            options={[
+              { value: 'rendah', label: 'Rendah' },
+              { value: 'sedang', label: 'Sedang' },
+              { value: 'tinggi', label: 'Tinggi' },
+            ]}
+            getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+            placeholder="Pilih prioritas…"
+          />
         </div>
 
-        <TextField
-          label="Dibutuhkan Sebelum Tanggal (opsional)" name="neededBy" type="date"
+        <DateField
+          label="Dibutuhkan Sebelum Tanggal (opsional)" name="neededBy"
           value={form.neededBy} onChange={change}
         />
 

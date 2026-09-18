@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { performCheckOut } = require('./assignmentController');
+const { clampPagination } = require('../utils/pagination');
 
 /**
  * ============================================================================
@@ -24,11 +25,11 @@ const PRIORITY_LABEL = { rendah: 'Rendah', sedang: 'Sedang', tinggi: 'Tinggi' };
 const STATUS_LABEL = { diajukan: 'Diajukan', disetujui: 'Disetujui', ditolak: 'Ditolak', dipenuhi: 'Dipenuhi', dibatalkan: 'Dibatalkan' };
 const PRIORITIES = Object.keys(PRIORITY_LABEL);
 
-async function generateRequestCode() {
+async function generateRequestCode(tenantId) {
   const year = new Date().getFullYear();
   const [rows] = await pool.query(
-    `SELECT request_no FROM asset_requests WHERE request_no LIKE :prefix ORDER BY request_no DESC LIMIT 1`,
-    { prefix: `REQ/${year}/%` }
+    `SELECT request_no FROM asset_requests WHERE tenant_id = :tenantId AND request_no LIKE :prefix ORDER BY request_no DESC LIMIT 1`,
+    { tenantId, prefix: `REQ/${year}/%` }
   );
   const last = rows[0] ? Number(String(rows[0].request_no).split('/')[2]) : 0;
   return `REQ/${year}/${String(last + 1).padStart(4, '0')}`;
@@ -75,17 +76,19 @@ const SELECT_ITEM = `
 
 // GET /api/requests?status=&search=&page=&limit=
 const listRequests = asyncHandler(async (req, res) => {
-  const { status = '', search = '', page = 1, limit = 20 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
+  const { status = '', search = '' } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
 
-  const conditions = [];
-  const params = {};
+  // tenant_id WAJIB, bukan opsional — beda dari status/search yang cuma filter tambahan.
+  const conditions = ['r.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
   if (status) { conditions.push('r.status = :status'); params.status = status; }
   if (search) {
-    conditions.push('(r.item_name LIKE :search OR r.requester_name LIKE :search OR r.request_no LIKE :search)');
+    conditions.push('(r.item_name ILIKE :search OR r.requester_name ILIKE :search OR r.request_no ILIKE :search)');
     params.search = `%${search}%`;
   }
-  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   const [rows] = await pool.query(
     `${SELECT_ITEM} ${whereClause}
@@ -107,7 +110,10 @@ const listRequests = asyncHandler(async (req, res) => {
 // GET /api/requests/:id
 const getRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const [rows] = await pool.query(`${SELECT_ITEM} WHERE r.id = :id`, { id });
+  const [rows] = await pool.query(
+    `${SELECT_ITEM} WHERE r.id = :id AND r.tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id }
+  );
   if (!rows[0]) return res.status(404).json({ message: 'Permintaan tidak ditemukan.' });
   res.json(toItem(rows[0]));
 });
@@ -120,25 +126,39 @@ const getRequest = asyncHandler(async (req, res) => {
  * pengguna, bukan otomatis). Melempar Error ber-`.status` seperti pola yang
  * sama dipakai performCheckOut di assignmentController.
  */
-async function performCreateRequest({ requesterName, department, categoryId, itemName, reason, priority = 'sedang', neededBy, userId, ip }) {
+async function performCreateRequest({ tenantId, requesterName, department, categoryId, itemName, reason, priority = 'sedang', neededBy, userId, ip }) {
+  if (!tenantId) { const err = new Error('Tenant tidak diketahui.'); err.status = 400; throw err; }
   if (!String(requesterName || '').trim()) { const err = new Error('Nama peminta wajib diisi.'); err.status = 400; throw err; }
   if (!String(itemName || '').trim()) { const err = new Error('Nama barang yang diminta wajib diisi.'); err.status = 400; throw err; }
   if (!PRIORITIES.includes(priority)) { const err = new Error('Prioritas tidak dikenal.'); err.status = 400; throw err; }
 
-  const requestNo = await generateRequestCode();
+  /* categoryId datang dari input pemakai (termasuk lewat form PUBLIK) — wajib
+     dipastikan benar-benar milik tenant ini, supaya permintaan satu tenant
+     tidak bisa dibuat menunjuk ke kode barang milik tenant lain. */
+  let validCategoryId = null;
+  if (categoryId) {
+    const [catRows] = await pool.query(
+      `SELECT id FROM asset_categories WHERE id = :categoryId AND tenant_id = :tenantId`,
+      { categoryId, tenantId }
+    );
+    if (catRows[0]) validCategoryId = catRows[0].id;
+  }
+
+  const requestNo = await generateRequestCode(tenantId);
   const [result] = await pool.query(
     `INSERT INTO asset_requests
-       (request_no, requester_name, department, category_id, item_name, reason, priority, needed_by, created_by)
-     VALUES (:requestNo, :requesterName, :department, :categoryId, :itemName, :reason, :priority, :neededBy, :userId)`,
+       (tenant_id, request_no, requester_name, department, category_id, item_name, reason, priority, needed_by, created_by)
+     VALUES (:tenantId, :requestNo, :requesterName, :department, :categoryId, :itemName, :reason, :priority, :neededBy, :userId)
+     RETURNING id`,
     {
-      requestNo, requesterName: requesterName.trim(), department: department || null,
-      categoryId: categoryId || null, itemName: itemName.trim(), reason: reason || null,
+      tenantId, requestNo, requesterName: requesterName.trim(), department: department || null,
+      categoryId: validCategoryId, itemName: itemName.trim(), reason: reason || null,
       priority, neededBy: neededBy || null, userId,
     }
   );
 
   await logAudit({
-    userId, action: 'create', entityType: 'asset_request', entityId: result.insertId,
+    userId, tenantId, action: 'create', entityType: 'asset_request', entityId: result.insertId,
     newValues: { requestNo, requesterName, itemName, priority }, ipAddress: ip,
   });
 
@@ -150,15 +170,18 @@ async function performCreateRequest({ requesterName, department, categoryId, ite
 const createRequest = asyncHandler(async (req, res) => {
   const { requesterName, department, categoryId, itemName, reason, priority, neededBy } = req.body;
   const item = await performCreateRequest({
-    requesterName, department, categoryId, itemName, reason, priority, neededBy,
+    tenantId: req.user.tenant_id, requesterName, department, categoryId, itemName, reason, priority, neededBy,
     userId: req.user.id, ip: req.ip,
   });
   res.status(201).json({ message: `Permintaan ${item.requestNo} berhasil diajukan.`, ...item });
 });
 
 /** Ambil permintaan, sekaligus tolak kalau statusnya bukan yang diharapkan. */
-async function loadRequestWithStatus(id, expectedStatuses) {
-  const [rows] = await pool.query(`SELECT * FROM asset_requests WHERE id = :id`, { id });
+async function loadRequestWithStatus(id, expectedStatuses, tenantId) {
+  const [rows] = await pool.query(
+    `SELECT * FROM asset_requests WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId }
+  );
   const row = rows[0];
   if (!row) return { error: { code: 404, message: 'Permintaan tidak ditemukan.' } };
   if (!expectedStatuses.includes(row.status)) {
@@ -177,7 +200,7 @@ const approveRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { reviewNote } = req.body;
 
-  const { row, error } = await loadRequestWithStatus(id, ['diajukan']);
+  const { row, error } = await loadRequestWithStatus(id, ['diajukan'], req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   await pool.query(
@@ -202,7 +225,7 @@ const rejectRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Alasan penolakan wajib diisi.' });
   }
 
-  const { row, error } = await loadRequestWithStatus(id, ['diajukan']);
+  const { row, error } = await loadRequestWithStatus(id, ['diajukan'], req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   await pool.query(
@@ -232,7 +255,7 @@ const fulfillRequest = asyncHandler(async (req, res) => {
 
   if (!assetId) return res.status(400).json({ message: 'Pilih aset yang akan diserahkan.' });
 
-  const { row, error } = await loadRequestWithStatus(id, ['disetujui']);
+  const { row, error } = await loadRequestWithStatus(id, ['disetujui'], req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   const conn = await pool.getConnection();
@@ -246,6 +269,7 @@ const fulfillRequest = asyncHandler(async (req, res) => {
        supaya bagian ini TIDAK commit sendiri — menunggu UPDATE permintaan
        di bawah ikut berhasil dulu. */
     ({ assignmentId, assetName } = await performCheckOut({
+      tenantId: req.user.tenant_id,
       assetId, holderName: row.requester_name, department: row.department,
       assignedAt, assignNote: assignNote || `Memenuhi permintaan ${row.request_no}`,
       userId: req.user.id, ip: req.ip, conn,
@@ -282,7 +306,7 @@ const fulfillRequest = asyncHandler(async (req, res) => {
 const cancelRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const { row, error } = await loadRequestWithStatus(id, ['diajukan', 'disetujui']);
+  const { row, error } = await loadRequestWithStatus(id, ['diajukan', 'disetujui'], req.user.tenant_id);
   if (error) return res.status(error.code).json({ message: error.message });
 
   await pool.query(`UPDATE asset_requests SET status = 'dibatalkan' WHERE id = :id`, { id });
@@ -299,7 +323,10 @@ const cancelRequest = asyncHandler(async (req, res) => {
 const deleteRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const [rows] = await pool.query(`SELECT * FROM asset_requests WHERE id = :id`, { id });
+  const [rows] = await pool.query(
+    `SELECT * FROM asset_requests WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id }
+  );
   const row = rows[0];
   if (!row) return res.status(404).json({ message: 'Permintaan tidak ditemukan.' });
 

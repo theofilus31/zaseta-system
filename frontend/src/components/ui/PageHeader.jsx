@@ -46,7 +46,7 @@ export default function PageHeader({
               </p>
             )}
 
-            <h1 className="text-[22px] sm:text-2xl font-bold text-ink-900 leading-tight truncate">
+            <h1 className="text-[22px] sm:text-2xl font-black text-ink-900 leading-tight tracking-tight truncate">
               {title}
             </h1>
 

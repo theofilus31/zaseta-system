@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -69,9 +68,9 @@ export default function AssetTypeManagement() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Master Data"
+        eyebrow="Data Acuan"
         title="Kategori Aset"
         description="Pengelompokan jenis aset secara umum — Elektronik, Furniture, Kendaraan, dan sebagainya."
       />
@@ -170,6 +169,6 @@ export default function AssetTypeManagement() {
           </Card>
         }
       />
-    </Layout>
+    </>
   );
 }

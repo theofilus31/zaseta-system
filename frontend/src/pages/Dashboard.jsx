@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -106,7 +105,7 @@ const TONE_STYLE = {
 
 /* Tiga fitur (pengingat, pemeliharaan, permintaan aset) plus barang habis
    pakai selama ini hanya terlihat lewat lonceng "Perlu Ditindaklanjuti" di
-   Topbar, tidak pernah muncul di halaman utama. Garansi SENGAJA tidak
+   TabBar, tidak pernah muncul di halaman utama. Garansi SENGAJA tidak
    diulang di sini — sudah punya bagian sendiri lebih bawah di halaman ini. */
 const FOLLOWUP_ICON = {
   reminder: 'fa-bell',
@@ -141,7 +140,7 @@ function AttentionRow({ item, value }) {
         <span className="block text-[11px] text-ink-400 truncate">{item.hint}</span>
       </span>
 
-      <span className="text-xl font-bold text-ink-900 tabular-nums shrink-0">{value}</span>
+      <span className="text-xl font-black text-ink-900 tabular-nums shrink-0">{value}</span>
       <i className="fas fa-chevron-right text-[10px] text-ink-300 group-hover:text-brand-500 transition-colors shrink-0" aria-hidden="true" />
     </Link>
   );
@@ -150,7 +149,7 @@ function AttentionRow({ item, value }) {
 /**
  * Pengingat, pemeliharaan, barang habis pakai, dan permintaan aset —
  * sebelum ini keempatnya hanya kelihatan lewat lonceng "Perlu Ditindaklanjuti"
- * di Topbar, tidak pernah muncul di halaman utama. Kartu ini menariknya dari
+ * di TabBar, tidak pernah muncul di halaman utama. Kartu ini menariknya dari
  * /api/notifications (sumber yang sama dipakai lonceng itu, supaya angkanya
  * tidak pernah menyimpang) dan menampilkannya langsung di Dasbor.
  *
@@ -266,7 +265,7 @@ function StatusDonut({ statusMap, total }) {
           ))}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold text-ink-900 leading-none tabular-nums">{total}</span>
+          <span className="text-2xl font-black text-ink-900 leading-none tabular-nums">{total}</span>
           <span className="text-[10px] text-ink-400 mt-1">Total Aset</span>
         </div>
       </div>
@@ -364,7 +363,7 @@ export default function Dashboard() {
 
   if (loading || !data) {
     return (
-      <Layout>
+      <>
         <PageHeader eyebrow={greeting} title="Ringkasan Aset" description="Memuat data terbaru…" />
         <div className="space-y-5">
           <SkeletonCards count={4} />
@@ -373,7 +372,7 @@ export default function Dashboard() {
             <Card className="lg:col-span-4"><Skeleton className="h-4 w-32 mb-5" /><Skeleton className="h-40 w-40 mx-auto rounded-full" /></Card>
           </div>
         </div>
-      </Layout>
+      </>
     );
   }
 
@@ -397,7 +396,7 @@ export default function Dashboard() {
   const maxDepartment = Math.max(1, ...(byDepartment || []).map((d) => d.total));
 
   return (
-    <Layout>
+    <>
       <PageHeader
         eyebrow={greeting}
         title={user?.name ? `Ringkasan aset, ${user.name.split(' ')[0]}` : 'Ringkasan Aset'}
@@ -494,7 +493,7 @@ export default function Dashboard() {
                   {['baik', 'rusak_ringan', 'rusak_berat'].map((key) => {
                     const value = conditionMap[key] || 0;
                     if (!value) return null;
-                    const color = { baik: '#47b648', rusak_ringan: '#fca91c', rusak_berat: '#ef4444' }[key];
+                    const color = { baik: '#2f9c4f', rusak_ringan: '#c98a1a', rusak_berat: '#c0432f' }[key];
                     return (
                       <div
                         key={key}
@@ -508,7 +507,7 @@ export default function Dashboard() {
                 <ul className="space-y-1">
                   {['baik', 'rusak_ringan', 'rusak_berat'].map((key) => {
                     const value = conditionMap[key] || 0;
-                    const color = { baik: '#47b648', rusak_ringan: '#fca91c', rusak_berat: '#ef4444' }[key];
+                    const color = { baik: '#2f9c4f', rusak_ringan: '#c98a1a', rusak_berat: '#c0432f' }[key];
                     return (
                       <li key={key}>
                         <Link
@@ -621,7 +620,7 @@ export default function Dashboard() {
                   { label: '31–90 hari', value: warranty.expiring90, tone: 'text-info-700 bg-info-50' },
                 ].map((x) => (
                   <div key={x.label} className={`rounded-xl px-3 py-3 text-center ${x.tone}`}>
-                    <p className="text-2xl font-bold tabular-nums leading-none">{x.value}</p>
+                    <p className="text-2xl font-black tabular-nums leading-none">{x.value}</p>
                     <p className="text-[11px] mt-1.5 opacity-80">{x.label}</p>
                   </div>
                 ))}
@@ -880,6 +879,6 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
-    </Layout>
+    </>
   );
 }

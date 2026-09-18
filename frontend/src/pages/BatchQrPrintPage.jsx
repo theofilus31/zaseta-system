@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
+import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button, { SegmentedControl } from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
@@ -8,7 +8,7 @@ import Pagination from '../components/ui/Pagination.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
 import { SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { FormError } from '../components/ui/Form.jsx';
+import { FormError, Checkbox } from '../components/ui/Form.jsx';
 import AssetFilterBar from '../components/assets/AssetFilterBar.jsx';
 import QrLabelDesign from '../components/assets/QrLabelDesign.jsx';
 
@@ -18,15 +18,34 @@ const ZOOM_OPTIONS = [0.6, 0.8, 1, 1.3].map((z) => ({ value: z, label: `${Math.r
 const DEFAULT_CUT_MARGIN_CM = 0.15; // jarak garis potong ke desain barcode
 const DEFAULT_LABEL_GAP_CM = 0;     // jarak antar label
 const DEFAULT_PAGE_MARGIN_CM = 1;   // margin ke tepi kertas
+const DEFAULT_PAGE_WIDTH_CM = 21;   // lebar kustom bawaan — sama seperti A4
+const DEFAULT_PAGE_HEIGHT_CM = 29.7; // tinggi kustom bawaan — sama seperti A4
+
+/* Bukan hanya A4/F4 — banyak percetakan label pakai kertas stiker/roll dengan
+   ukuran sendiri, jadi opsi "Kustom" membuka dua kotak lebar/tinggi bebas.
+   Ukurannya dalam cm supaya bisa langsung dipakai di CSS @page tanpa
+   konversi, dan konsisten dengan satuan yang sudah dipakai di seluruh
+   halaman ini (ukuran label, jarak potong, dst). */
+const PAPER_PRESETS = [
+  { value: 'a4', label: 'A4', wCm: 21, hCm: 29.7 },
+  { value: 'f4', label: 'F4 / Folio', wCm: 21.5, hCm: 33 },
+  { value: 'letter', label: 'Letter', wCm: 21.59, hCm: 27.94 },
+  { value: 'legal', label: 'Legal', wCm: 21.59, hCm: 35.56 },
+  { value: 'custom', label: 'Kustom' },
+];
+const ORIENTATION_OPTIONS = [
+  { value: 'portrait', label: 'Potret' },
+  { value: 'landscape', label: 'Lanskap' },
+];
 
 /** Kotak angka kecil untuk pengaturan jarak cetak (dalam cm). */
-function CmInput({ label, value, onChange, step = 0.05 }) {
+function CmInput({ label, value, onChange, step = 0.05, max = 5 }) {
   return (
     <div className="flex items-center gap-2">
       <label className="text-xs text-ink-500 whitespace-nowrap">{label}</label>
       <div className="relative">
         <input
-          type="number" min="0" max="5" step={step}
+          type="number" min="0" max={max} step={step}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="w-20 rounded-lg border border-ink-200 bg-white px-2 py-1.5 pr-7 text-xs text-center
@@ -61,11 +80,18 @@ export default function BatchQrPrintPage() {
 
   // ------- Mode pratinjau/cetak -------
   const [mode, setMode] = useState('select'); // 'select' | 'preview'
+  /* Pratinjau butuh lebar penuh untuk menampilkan lembar label berjajar. */
+  useLayoutWidth(mode === 'preview' ? 'full' : 'default');
   const [sizeCm, setSizeCm] = useState(3);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [cutMarginCm, setCutMarginCm] = useState(DEFAULT_CUT_MARGIN_CM);
   const [labelGapCm, setLabelGapCm] = useState(DEFAULT_LABEL_GAP_CM);
   const [pageMarginCm, setPageMarginCm] = useState(DEFAULT_PAGE_MARGIN_CM);
+  const [paperPreset, setPaperPreset] = useState('a4');
+  const [orientation, setOrientation] = useState('portrait');
+  const [customPageWidthCm, setCustomPageWidthCm] = useState(DEFAULT_PAGE_WIDTH_CM);
+  const [customPageHeightCm, setCustomPageHeightCm] = useState(DEFAULT_PAGE_HEIGHT_CM);
+  const [showCutLines, setShowCutLines] = useState(true);
   const [printAssets, setPrintAssets] = useState([]);
   const [preparingPrint, setPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
@@ -147,23 +173,34 @@ export default function BatchQrPrintPage() {
     }
   }
 
-  function clampCm(value, fallback) {
+  function clampCm(value, fallback, max = 5) {
     const n = parseFloat(value);
     if (Number.isNaN(n) || n < 0) return fallback;
-    return Math.min(n, 5); // batas atas wajar, mencegah salah ketik jadi puluhan cm
+    return Math.min(n, max); // batas atas wajar, mencegah salah ketik jadi ratusan cm
   }
 
   const dashedBoxCm = sizeCm + cutMarginCm * 2;
+
+  /* Ukuran kertas aktual — dari preset, atau dari dua kotak lebar/tinggi
+     kalau "Kustom" dipilih. Lanskap cukup menukar lebar<->tinggi, bukan
+     preset terpisah, supaya F4/Letter/Legal/Kustom semuanya otomatis ikut
+     bisa dilanskapkan tanpa didaftar dua kali. */
+  const activePaper = PAPER_PRESETS.find((p) => p.value === paperPreset) || PAPER_PRESETS[0];
+  let pageWidthCm = paperPreset === 'custom' ? customPageWidthCm : activePaper.wCm;
+  let pageHeightCm = paperPreset === 'custom' ? customPageHeightCm : activePaper.hCm;
+  if (orientation === 'landscape') { [pageWidthCm, pageHeightCm] = [pageHeightCm, pageWidthCm]; }
+  // Lebar yang benar-benar bisa dipakai label setelah margin tepi kiri+kanan dikurangi
+  const usableWidthCm = Math.max(pageWidthCm - pageMarginCm * 2, dashedBoxCm);
 
   /* ============================================================
      MODE PRATINJAU CETAK
      ============================================================ */
   if (mode === 'preview') {
     return (
-      <Layout width="full">
+      <>
         <style>{`
           @media print {
-            @page { size: A4 portrait; margin: ${pageMarginCm}cm; }
+            @page { size: ${pageWidthCm}cm ${pageHeightCm}cm; margin: ${pageMarginCm}cm; }
             body * { visibility: hidden; }
             #batch-print-area, #batch-print-area * { visibility: visible; }
             #batch-print-area {
@@ -182,7 +219,7 @@ export default function BatchQrPrintPage() {
           <PageHeader
             eyebrow="Cetak Massal"
             title="Pratinjau Cetak Label"
-            description={`${printAssets.length} label siap dicetak dalam ukuran ${sizeCm}×${sizeCm} cm.`}
+            description={`${printAssets.length} label ${sizeCm}×${sizeCm} cm, kertas ${activePaper.value === 'custom' ? `${pageWidthCm}×${pageHeightCm} cm` : activePaper.label} (${orientation === 'landscape' ? 'lanskap' : 'potret'}).`}
             actions={
               <>
                 <Button variant="secondary" size="sm" onClick={() => setMode('select')}>
@@ -216,6 +253,36 @@ export default function BatchQrPrintPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-4 mt-5 pt-5 border-t border-ink-200/70">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-ink-500 whitespace-nowrap">Ukuran kertas</span>
+                <SegmentedControl
+                  options={PAPER_PRESETS.map(({ value, label }) => ({ value, label }))}
+                  value={paperPreset} onChange={setPaperPreset}
+                />
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-ink-500 whitespace-nowrap">Orientasi</span>
+                <SegmentedControl options={ORIENTATION_OPTIONS} value={orientation} onChange={setOrientation} />
+              </div>
+
+              {paperPreset === 'custom' && (
+                <>
+                  <CmInput
+                    label="Lebar kertas" step={0.5} max={100}
+                    value={customPageWidthCm}
+                    onChange={(v) => setCustomPageWidthCm(clampCm(v, DEFAULT_PAGE_WIDTH_CM, 100))}
+                  />
+                  <CmInput
+                    label="Tinggi kertas" step={0.5} max={100}
+                    value={customPageHeightCm}
+                    onChange={(v) => setCustomPageHeightCm(clampCm(v, DEFAULT_PAGE_HEIGHT_CM, 100))}
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-4 mt-5 pt-5 border-t border-ink-200/70">
               <CmInput
                 label="Margin tepi kertas" step={0.1}
                 value={pageMarginCm}
@@ -230,6 +297,15 @@ export default function BatchQrPrintPage() {
                 label="Jarak antar label"
                 value={labelGapCm}
                 onChange={(v) => setLabelGapCm(clampCm(v, DEFAULT_LABEL_GAP_CM))}
+              />
+            </div>
+
+            <div className="mt-5 pt-5 border-t border-ink-200/70">
+              <Checkbox
+                label="Tampilkan garis potong-potong"
+                description="Matikan kalau tidak ingin garis panduan gunting ikut tercetak — jarak dan ukuran antar label tetap persis sama, hanya garisnya yang disembunyikan."
+                checked={showCutLines}
+                onChange={(e) => setShowCutLines(e.target.checked)}
               />
             </div>
 
@@ -258,6 +334,13 @@ export default function BatchQrPrintPage() {
                 gridTemplateColumns: `repeat(auto-fill, ${dashedBoxCm}cm)`,
                 gap: `${labelGapCm}cm`,
                 justifyContent: 'start',
+                /* Dibatasi ke lebar kertas yang benar-benar bisa dipakai
+                   (setelah margin) supaya jumlah label per baris di layar
+                   sama persis dengan yang akan tercetak — bukan sekadar
+                   mengikuti lebar jendela peramban. Saat mencetak, aturan
+                   `#batch-print-area { width: auto !important; }` di bawah
+                   mengambil alih dan mengikuti ukuran halaman fisik. */
+                width: `${usableWidthCm}cm`,
               }}
             >
               {printAssets.map((asset) => (
@@ -268,7 +351,7 @@ export default function BatchQrPrintPage() {
                     width: `${dashedBoxCm}cm`,
                     height: `${dashedBoxCm}cm`,
                     boxSizing: 'border-box',
-                    border: '1px dashed #9ca3af',
+                    border: `1px dashed ${showCutLines ? '#9ca3af' : 'transparent'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -282,7 +365,7 @@ export default function BatchQrPrintPage() {
             </div>
           </div>
         </div>
-      </Layout>
+      </>
     );
   }
 
@@ -290,7 +373,7 @@ export default function BatchQrPrintPage() {
      MODE PILIH ASET
      ============================================================ */
   return (
-    <Layout>
+    <>
       <PageHeader
         backTo="/assets"
         backLabel="Daftar Aset"
@@ -429,6 +512,6 @@ export default function BatchQrPrintPage() {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 }

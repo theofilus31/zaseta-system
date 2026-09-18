@@ -3,6 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { calculateDepreciation } = require('../utils/depreciation');
 const { todayLocal } = require('../utils/dateLocal');
+const { toCsvCell } = require('../utils/csv');
 
 /**
  * ============================================================================
@@ -34,8 +35,9 @@ function parseAsOfDate(raw) {
 }
 
 /** Baris aset yang "ada" (dimiliki) pada asOfDate, dengan filter opsional. */
-async function fetchOwnedAssets({ asOfDate, departmentId, categoryId }) {
+async function fetchOwnedAssets({ tenantId, asOfDate, departmentId, categoryId }) {
   const conditions = [
+    'a.tenant_id = :tenantId',
     'a.deleted_at IS NULL',
     'a.purchase_date IS NOT NULL',
     'a.purchase_date <= :asOfDate',
@@ -45,7 +47,7 @@ async function fetchOwnedAssets({ asOfDate, departmentId, categoryId }) {
       OR (a.status IN ('hilang','dihapuskan') AND a.retired_date IS NOT NULL AND a.retired_date > :asOfDate)
     )`,
   ];
-  const params = { asOfDate };
+  const params = { tenantId, asOfDate };
 
   if (departmentId) { conditions.push('a.department_id = :departmentId'); params.departmentId = departmentId; }
   if (categoryId) { conditions.push('a.category_id = :categoryId'); params.categoryId = categoryId; }
@@ -70,7 +72,7 @@ const getDepreciationReport = asyncHandler(async (req, res) => {
   const asOfDate = parseAsOfDate(req.query.asOfDate);
   if (!asOfDate) return res.status(400).json({ message: 'Tanggal laporan tidak valid.' });
 
-  const assets = await fetchOwnedAssets({ asOfDate, departmentId, categoryId });
+  const assets = await fetchOwnedAssets({ tenantId: req.user.tenant_id, asOfDate, departmentId, categoryId });
 
   const groups = new Map(); // key: departmentId ?? 'none'
   for (const a of assets) {
@@ -135,19 +137,13 @@ const exportDepreciationReport = asyncHandler(async (req, res) => {
   const asOfDate = parseAsOfDate(req.query.asOfDate);
   if (!asOfDate) return res.status(400).json({ message: 'Tanggal laporan tidak valid.' });
 
-  const assets = await fetchOwnedAssets({ asOfDate, departmentId, categoryId });
+  const assets = await fetchOwnedAssets({ tenantId: req.user.tenant_id, asOfDate, departmentId, categoryId });
 
   const headers = [
     'Kode Aset', 'Nama Aset', 'Kode Barang/Aset', 'Departemen',
     'Tanggal Beli', 'Harga Beli', 'Masa Manfaat (bulan)', 'Bulan Berjalan',
     'Akumulasi Penyusutan', 'Nilai Buku',
   ];
-
-  const toCell = (value) => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    return /[",\r\n;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
 
   const lines = [headers.join(',')];
   for (const a of assets) {
@@ -158,7 +154,7 @@ const exportDepreciationReport = asyncHandler(async (req, res) => {
       a.purchase_date, price,
       a.useful_life_months || '', dep ? dep.monthsElapsed : '',
       dep ? dep.accumulated : 0, dep ? dep.bookValue : price,
-    ].map(toCell).join(','));
+    ].map(toCsvCell).join(','));
   }
 
   await logAudit({

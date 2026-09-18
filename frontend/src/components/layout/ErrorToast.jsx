@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useNotification } from '../../context/NotificationContext.jsx';
 
 /**
@@ -55,6 +56,16 @@ export default function ErrorToast() {
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-semibold text-ink-800">{tone.title}</p>
             <p className="text-[13px] text-ink-600 leading-snug mt-0.5 break-words">{toast.message}</p>
+            {toast.action && (
+              <Link
+                to={toast.action.to}
+                onClick={dismissToast}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-[12px] font-semibold text-white hover:bg-brand-700 transition-colors"
+              >
+                {toast.action.label}
+                <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
+              </Link>
+            )}
           </div>
 
           <button

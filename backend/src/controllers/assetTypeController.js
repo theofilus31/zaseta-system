@@ -5,7 +5,8 @@ const logAudit = require('../utils/auditLogger');
 // GET /api/asset-types
 const listAssetTypes = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT id, name, description, is_active FROM asset_types ORDER BY name ASC`
+    `SELECT id, name, description, is_active FROM asset_types WHERE tenant_id = :tenantId ORDER BY name ASC`,
+    { tenantId: req.user.tenant_id }
   );
   res.json(rows);
 });
@@ -17,8 +18,8 @@ const createAssetType = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Nama kategori aset wajib diisi.' });
   }
   const [result] = await pool.query(
-    `INSERT INTO asset_types (name, description) VALUES (:name, :description)`,
-    { name, description: description || null }
+    `INSERT INTO asset_types (tenant_id, name, description) VALUES (:tenantId, :name, :description) RETURNING id`,
+    { tenantId: req.user.tenant_id, name, description: description || null }
   );
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'asset_type', entityId: result.insertId, newValues: req.body });
   res.status(201).json({ id: result.insertId, name, description: description || null });
@@ -31,10 +32,12 @@ const updateAssetType = asyncHandler(async (req, res) => {
   if (!name) {
     return res.status(400).json({ message: 'Nama kategori aset wajib diisi.' });
   }
-  await pool.query(
-    `UPDATE asset_types SET name = :name, description = :description, is_active = :isActive WHERE id = :id`,
-    { id, name, description: description || null, isActive: isActive ?? true }
+  const [result] = await pool.query(
+    `UPDATE asset_types SET name = :name, description = :description, is_active = :isActive
+     WHERE id = :id AND tenant_id = :tenantId`,
+    { id, name, description: description || null, isActive: isActive ?? true, tenantId: req.user.tenant_id }
   );
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Kategori aset tidak ditemukan.' });
   await logAudit({ userId: req.user.id, action: 'update', entityType: 'asset_type', entityId: id, newValues: req.body });
   res.json({ message: 'Kategori aset berhasil diperbarui.' });
 });
@@ -42,7 +45,8 @@ const updateAssetType = asyncHandler(async (req, res) => {
 // DELETE /api/asset-types/:id
 const deleteAssetType = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await pool.query(`DELETE FROM asset_types WHERE id = :id`, { id });
+  const [result] = await pool.query(`DELETE FROM asset_types WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId: req.user.tenant_id });
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Kategori aset tidak ditemukan.' });
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'asset_type', entityId: id });
   res.json({ message: 'Kategori aset berhasil dihapus.' });
 });

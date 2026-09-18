@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -19,7 +18,7 @@ const EMPTY_SUB_FORM = { code: '', name: '', description: '' };
 const CODE_LOCKED_HINT = 'Kode tidak bisa diubah karena sudah dipakai di kode aset. Untuk mengganti kode, hapus lalu buat baru.';
 
 export default function LocationManagement() {
-  const { pushSuccess, pushError } = useNotification();
+  const { pushSuccess, pushError, pushLimitError } = useNotification();
 
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState('');
@@ -81,6 +80,7 @@ export default function LocationManagement() {
       loadLocations();
     } catch (err) {
       setLocError(err.response?.data?.message || 'Gagal menyimpan lokasi.');
+      if (err.response?.data?.code === 'PLAN_LIMIT_REACHED') pushLimitError(err);
     } finally {
       setSavingLoc(false);
     }
@@ -180,9 +180,9 @@ export default function LocationManagement() {
   const selectedLocation = locations.find((l) => String(l.id) === String(selectedLocationId));
 
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Master Data"
+        eyebrow="Data Acuan"
         title="Lokasi & Sub Lokasi"
         description="Dua bagian pertama dari kode aset. Pilih sebuah lokasi di kolom kiri untuk mengelola sub lokasinya."
         actions={
@@ -459,6 +459,6 @@ export default function LocationManagement() {
           onClose={() => setShowImport(false)}
         />
       )}
-    </Layout>
+    </>
   );
 }

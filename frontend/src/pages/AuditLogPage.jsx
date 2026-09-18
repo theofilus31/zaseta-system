@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
+import { format, isValid, parse } from 'date-fns';
 import axiosClient from '../api/axiosClient.js';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -8,7 +8,8 @@ import Pagination from '../components/ui/Pagination.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { SkeletonRows } from '../components/ui/Skeleton.jsx';
-import { SearchInput } from '../components/ui/Form.jsx';
+import { SearchInput, SearchableSelect } from '../components/ui/Form.jsx';
+import { DateRangePicker } from '../components/ui/date-picker/DateRangePicker.jsx';
 
 /* Istilah teknis di database diterjemahkan agar riwayat terbaca sebagai
    kalimat, bukan sebagai dump tabel. */
@@ -168,7 +169,7 @@ function formatValue(v, key) {
 /** Panel sebelum/sesudah, hanya menampilkan field yang benar-benar berubah. */
 function ChangeDetail({ oldValues, newValues }) {
   if (!oldValues && !newValues) {
-    return <p className="text-xs text-ink-400 italic">Tidak ada rincian perubahan yang tercatat.</p>;
+    return <p className="text-xs text-ink-400">Tidak ada rincian perubahan yang tercatat.</p>;
   }
 
   const keys = [...new Set([...Object.keys(oldValues || {}), ...Object.keys(newValues || {})])]
@@ -184,7 +185,7 @@ function ChangeDetail({ oldValues, newValues }) {
   });
 
   if (changed.length === 0) {
-    return <p className="text-xs text-ink-400 italic">Tidak ada nilai yang berubah.</p>;
+    return <p className="text-xs text-ink-400">Tidak ada nilai yang berubah.</p>;
   }
 
   return (
@@ -248,7 +249,7 @@ function LogRow({ log }) {
               </span>
             </div>
           ) : (
-            <span className="text-[13px] text-ink-400 italic">Anonim / publik</span>
+            <span className="text-[13px] text-ink-400">Anonim / publik</span>
           )}
         </td>
 
@@ -330,6 +331,17 @@ export default function AuditLogPage() {
     return (value) => { setter(value); setPage(1); };
   }
 
+  /* DateRangePicker bekerja dengan objek Date {from, to}; backend & state
+     filter di sini tetap string 'YYYY-MM-DD' terpisah (dateFrom/dateTo)
+     supaya tidak perlu mengubah kontrak query ke /audit-logs. */
+  const isoToDate = (s) => { const d = parse(s, 'yyyy-MM-dd', new Date()); return s && isValid(d) ? d : undefined; };
+  const dateRange = { from: isoToDate(dateFrom), to: isoToDate(dateTo) };
+  function handleDateRangeChange(range) {
+    setDateFrom(range?.from ? format(range.from, 'yyyy-MM-dd') : '');
+    setDateTo(range?.to ? format(range.to, 'yyyy-MM-dd') : '');
+    setPage(1);
+  }
+
   const activeCount = [action, entityType, userId, dateFrom, dateTo].filter(Boolean).length;
 
   function clearAll() {
@@ -337,13 +349,10 @@ export default function AuditLogPage() {
     setDateFrom(''); setDateTo(''); setSearch(''); setPage(1);
   }
 
-  const selectClass = 'field-select field-sunken !py-2.5 !text-[13px] w-full';
-  const dateClass = 'field field-sunken !py-2.5 !text-[13px] w-full';
-
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Administrasi"
+        eyebrow="Laporan"
         title="Riwayat Aktivitas"
         description="Jejak seluruh perubahan data di sistem — siapa melakukan apa, kapan, dan nilai apa yang berubah."
       />
@@ -352,7 +361,9 @@ export default function AuditLogPage() {
           satu filter utama selalu tampil, sisanya disembunyikan di balik tombol
           "Filter" supaya baris atas tidak penuh sesak — empat kontrol tambahan
           sekaligus terasa berat untuk pemakaian harian. */}
-      <div className="mb-4 rounded-2xl border border-ink-200/70 bg-white shadow-card overflow-hidden">
+      {/* TANPA overflow-hidden: dropdown SearchableSelect di baris filter
+          berposisi absolute dan meluas ke bawah batas kartu ini. */}
+      <div className="mb-4 rounded-2xl border border-ink-200/70 bg-white shadow-card">
         <div className="flex flex-col sm:flex-row gap-2.5 p-3">
           <SearchInput
             value={search}
@@ -362,15 +373,14 @@ export default function AuditLogPage() {
             containerClassName="flex-1 min-w-0"
           />
 
-          <select
-            value={action}
-            onChange={(e) => update(setAction)(e.target.value)}
+          <SearchableSelect
+            value={action} onChange={update(setAction)}
+            options={filters.actions.map((a) => ({ key: a, label: ACTION_LABEL[a] || a }))}
+            getOptionLabel={(o) => o.label} getOptionValue={(o) => o.key}
+            placeholder="Semua Aksi" emptyLabel="Semua Aksi"
             aria-label="Filter aksi"
-            className={`${selectClass} sm:w-44`}
-          >
-            <option value="">Semua Aksi</option>
-            {filters.actions.map((a) => <option key={a} value={a}>{ACTION_LABEL[a] || a}</option>)}
-          </select>
+            sunken className="sm:w-44" inputClassName="!py-2.5 !text-[13px]"
+          />
 
           <Button
             variant={expanded || activeCount > 0 ? 'subtle' : 'secondary'}
@@ -392,31 +402,25 @@ export default function AuditLogPage() {
         {expanded && (
           <div className="border-t border-ink-200/70 bg-ink-50/60 px-3 py-3.5 animate-slide-down">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              <label className="block">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Jenis Data</span>
-                <select value={entityType} onChange={(e) => update(setEntityType)(e.target.value)} className={selectClass}>
-                  <option value="">Semua Jenis Data</option>
-                  {filters.entityTypes.map((t) => <option key={t} value={t}>{ENTITY_LABEL[t] || t}</option>)}
-                </select>
-              </label>
+              <SearchableSelect
+                label="Jenis Data" value={entityType} onChange={update(setEntityType)}
+                options={filters.entityTypes.map((t) => ({ key: t, label: ENTITY_LABEL[t] || t }))}
+                getOptionLabel={(o) => o.label} getOptionValue={(o) => o.key}
+                placeholder="Semua Jenis Data" emptyLabel="Semua Jenis Data"
+                sunken inputClassName="!py-2.5 !text-[13px]"
+              />
 
-              <label className="block">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Pengguna</span>
-                <select value={userId} onChange={(e) => update(setUserId)(e.target.value)} className={selectClass}>
-                  <option value="">Semua Pengguna</option>
-                  {filters.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </label>
+              <SearchableSelect
+                label="Pengguna" value={userId} onChange={update(setUserId)}
+                options={filters.users}
+                placeholder="Semua Pengguna" emptyLabel="Semua Pengguna"
+                sunken inputClassName="!py-2.5 !text-[13px]"
+              />
 
-              <label className="block">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Dari</span>
-                <input type="date" value={dateFrom} onChange={(e) => update(setDateFrom)(e.target.value)} className={dateClass} />
-              </label>
-
-              <label className="block">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Sampai</span>
-                <input type="date" value={dateTo} onChange={(e) => update(setDateTo)(e.target.value)} className={dateClass} />
-              </label>
+              <div>
+                <label className="label">Rentang Tanggal</label>
+                <DateRangePicker value={dateRange} onChange={handleDateRangeChange} className="h-[38px] text-[13px]" />
+              </div>
             </div>
           </div>
         )}
@@ -477,6 +481,6 @@ export default function AuditLogPage() {
         totalItems={pagination.total}
         onChange={setPage}
       />
-    </Layout>
+    </>
   );
 }

@@ -7,7 +7,7 @@ import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
 import { Badge } from '../ui/StatusBadge.jsx';
-import { TextField, SelectField, TextareaField, FormError } from '../ui/Form.jsx';
+import { TextField, SearchableSelect, DateField, TextareaField, FormError } from '../ui/Form.jsx';
 import { Skeleton } from '../ui/Skeleton.jsx';
 import { todayLocal as today } from '../../utils/dateLocal.js';
 
@@ -273,14 +273,20 @@ function CreateMaintenanceModal({ assetId, onClose, onCreated }) {
     >
       <form id="create-maintenance-form" onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SelectField label="Jenis" name="maintenanceType" value={form.maintenanceType} onChange={change}>
-            <option value="preventive">Preventif (Terjadwal)</option>
-            <option value="corrective">Korektif (Perbaikan)</option>
-            <option value="calibration">Kalibrasi</option>
-            <option value="other">Lainnya</option>
-          </SelectField>
-          <TextField
-            label="Tanggal Jadwal" name="scheduledDate" type="date" required
+          <SearchableSelect
+            label="Jenis" value={form.maintenanceType} onChange={(v) => setForm((f) => ({ ...f, maintenanceType: v }))}
+            clearable={false} searchable={false}
+            options={[
+              { value: 'preventive', label: 'Preventif (Terjadwal)' },
+              { value: 'corrective', label: 'Korektif (Perbaikan)' },
+              { value: 'calibration', label: 'Kalibrasi' },
+              { value: 'other', label: 'Lainnya' },
+            ]}
+            getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+            placeholder="Pilih jenis…"
+          />
+          <DateField
+            label="Tanggal Jadwal" name="scheduledDate" required
             value={form.scheduledDate} onChange={change}
           />
         </div>
@@ -359,8 +365,8 @@ function CompleteMaintenanceModal({ assetId, item, onClose, onCompleted }) {
       }
     >
       <form id="complete-maintenance-form" onSubmit={submit} className="space-y-4">
-        <TextField
-          label="Tanggal Selesai" name="completedDate" type="date" required
+        <DateField
+          label="Tanggal Selesai" name="completedDate" required
           value={form.completedDate} onChange={change}
         />
 

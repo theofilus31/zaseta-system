@@ -8,7 +8,8 @@ const { todayLocal } = require('../utils/dateLocal');
 // GET /api/locations
 const listLocations = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT id, code, name, description, is_active FROM locations WHERE is_active = TRUE ORDER BY name ASC`
+    `SELECT id, code, name, description, is_active FROM locations WHERE tenant_id = :tenantId AND is_active = TRUE ORDER BY name ASC`,
+    { tenantId: req.user.tenant_id }
   );
   res.json(rows);
 });
@@ -16,6 +17,7 @@ const listLocations = asyncHandler(async (req, res) => {
 // POST /api/locations
 const createLocation = asyncHandler(async (req, res) => {
   const { code, name, description } = req.body;
+  const tenantId = req.user.tenant_id;
   if (!code || !name) {
     return res.status(400).json({ message: 'Kode dan nama lokasi wajib diisi.' });
   }
@@ -23,7 +25,7 @@ const createLocation = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Kode lokasi tidak boleh mengandung karakter "/" (dipakai sebagai pemisah pada kode aset).' });
   }
 
-  const [existing] = await pool.query(`SELECT id, is_active FROM locations WHERE code = :code`, { code });
+  const [existing] = await pool.query(`SELECT id, is_active FROM locations WHERE tenant_id = :tenantId AND code = :code`, { tenantId, code });
   if (existing[0] && existing[0].is_active) {
     return res.status(409).json({ message: 'Kode lokasi sudah digunakan.' });
   }
@@ -35,8 +37,8 @@ const createLocation = asyncHandler(async (req, res) => {
   }
 
   const [result] = await pool.query(
-    `INSERT INTO locations (code, name, description) VALUES (:code, :name, :description)`,
-    { code, name, description: description || null }
+    `INSERT INTO locations (tenant_id, code, name, description) VALUES (:tenantId, :code, :name, :description) RETURNING id`,
+    { tenantId, code, name, description: description || null }
   );
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'location', entityId: result.insertId, newValues: req.body });
   res.status(201).json({ id: result.insertId, code, name });
@@ -49,8 +51,9 @@ const createLocation = asyncHandler(async (req, res) => {
 const updateLocation = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, description, isActive } = req.body;
+  const tenantId = req.user.tenant_id;
 
-  const [rows] = await pool.query(`SELECT id FROM locations WHERE id = :id`, { id });
+  const [rows] = await pool.query(`SELECT id FROM locations WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
   if (!rows[0]) return res.status(404).json({ message: 'Lokasi tidak ditemukan.' });
 
   await pool.query(
@@ -64,7 +67,11 @@ const updateLocation = asyncHandler(async (req, res) => {
 // DELETE /api/locations/:id (soft — nonaktifkan, karena mungkin masih dipakai aset lama)
 const deleteLocation = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  await pool.query(`UPDATE locations SET is_active = FALSE WHERE id = :id`, { id });
+  const [result] = await pool.query(
+    `UPDATE locations SET is_active = FALSE WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId: req.user.tenant_id }
+  );
+  if (result.affectedRows === 0) return res.status(404).json({ message: 'Lokasi tidak ditemukan.' });
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'location', entityId: id });
   res.json({ message: 'Lokasi berhasil dinonaktifkan.' });
 });
@@ -91,6 +98,7 @@ const importLocations = asyncHandler(async (req, res) => {
     });
   }
 
+  const tenantId = req.user.tenant_id;
   const summary = {
     locationsCreated: 0,
     locationsReactivated: 0,
@@ -127,7 +135,7 @@ const importLocations = asyncHandler(async (req, res) => {
     } else {
       // Sengaja TIDAK filter is_active di sini — perlu tahu juga kalau kode ini pernah dipakai lokasi yang sudah dihapus (soft-delete),
       // supaya bisa diaktifkan kembali alih-alih dianggap "sudah ada" padahal tidak pernah muncul di dropdown/list.
-      const [existingRows] = await pool.query(`SELECT id, is_active FROM locations WHERE code = :code`, { code: locationCode });
+      const [existingRows] = await pool.query(`SELECT id, is_active FROM locations WHERE tenant_id = :tenantId AND code = :code`, { tenantId, code: locationCode });
       if (existingRows[0] && existingRows[0].is_active) {
         locationId = existingRows[0].id;
         locationCache.set(locationCode, locationId);
@@ -139,8 +147,8 @@ const importLocations = asyncHandler(async (req, res) => {
         summary.locationsReactivated++;
       } else {
         const [result] = await pool.query(
-          `INSERT INTO locations (code, name) VALUES (:code, :name)`,
-          { code: locationCode, name: locationName }
+          `INSERT INTO locations (tenant_id, code, name) VALUES (:tenantId, :code, :name) RETURNING id`,
+          { tenantId, code: locationCode, name: locationName }
         );
         locationId = result.insertId;
         locationCache.set(locationCode, locationId);
@@ -171,8 +179,8 @@ const importLocations = asyncHandler(async (req, res) => {
         continue;
       }
       await pool.query(
-        `INSERT INTO sub_locations (location_id, code, name) VALUES (:locationId, :code, :name)`,
-        { locationId, code: subLocationCode, name: subLocationName }
+        `INSERT INTO sub_locations (tenant_id, location_id, code, name) VALUES (:tenantId, :locationId, :code, :name)`,
+        { tenantId, locationId, code: subLocationCode, name: subLocationName }
       );
       summary.subLocationsCreated++;
     }
@@ -194,8 +202,9 @@ const exportLocations = asyncHandler(async (req, res) => {
             sl.code AS sub_location_code, sl.name AS sub_location_name
      FROM locations l
      LEFT JOIN sub_locations sl ON sl.location_id = l.id AND sl.is_active = TRUE
-     WHERE l.is_active = TRUE
-     ORDER BY l.name ASC, sl.name ASC`
+     WHERE l.tenant_id = :tenantId AND l.is_active = TRUE
+     ORDER BY l.name ASC, sl.name ASC`,
+    { tenantId: req.user.tenant_id }
   );
 
   const headers = ['Kode Lokasi', 'Nama Lokasi', 'Kode Sub Lokasi', 'Nama Sub Lokasi'];

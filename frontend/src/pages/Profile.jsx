@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
+import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
@@ -26,6 +26,7 @@ function ReadonlyRow({ value, mono = false, action }) {
 }
 
 export default function Profile() {
+  useLayoutWidth('narrow');
   const { user, setUser, can } = useAuth();
   const { pushError, pushSuccess } = useNotification();
   const navigate = useNavigate();
@@ -200,19 +201,19 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <Layout width="narrow">
+      <>
         <Skeleton className="h-7 w-48 mb-6" />
         <div className="space-y-5">
           <Card><Skeleton className="h-24 w-full" /></Card>
           <Card><Skeleton className="h-32 w-full" /></Card>
           <Card><Skeleton className="h-40 w-full" /></Card>
         </div>
-      </Layout>
+      </>
     );
   }
 
   return (
-    <Layout width="narrow">
+    <>
       <PageHeader title="Profil Saya" description="Kelola identitas dan keamanan akun Anda." />
 
       {/* ---------- Kartu identitas ---------- */}
@@ -313,15 +314,17 @@ export default function Profile() {
 
         {emailStep === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-3">
-            <p className="rounded-xl bg-info-50 border border-info-200 px-3.5 py-3 text-xs text-info-800 leading-relaxed">
-              Kode OTP telah dikirim ke <strong>{newEmail}</strong>. Masukkan 6 digit kode tersebut di bawah ini.
-            </p>
+            <div className="rounded-xl bg-info-50 border border-info-200 px-3.5 py-3 text-xs text-info-800 leading-relaxed">
+              <p>Kode OTP telah dikirim ke:</p>
+              <p className="font-semibold break-all mt-0.5">{newEmail}</p>
+              <p className="mt-1.5">Masukkan 6 digit kode tersebut di bawah ini.</p>
+            </div>
             <TextField
               label="Kode OTP" required autoFocus
               inputMode="numeric" maxLength={6}
               value={otpCode}
               onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '')); setEmailError(''); }}
-              className="text-center font-mono text-lg tracking-[0.5em]"
+              inputClassName="text-center font-mono text-lg tracking-[0.5em]"
               placeholder="123456"
             />
             <FormError>{emailError}</FormError>
@@ -388,6 +391,6 @@ export default function Profile() {
           <Button type="button" variant="secondary" onClick={() => navigate(-1)}>Batal</Button>
         </div>
       </form>
-    </Layout>
+    </>
   );
 }

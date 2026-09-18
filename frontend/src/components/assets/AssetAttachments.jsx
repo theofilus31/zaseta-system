@@ -6,7 +6,7 @@ import Card, { CardHeader } from '../ui/Card.jsx';
 import Button from '../ui/Button.jsx';
 import Modal from '../ui/Modal.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
-import { SelectField, TextareaField, FormError } from '../ui/Form.jsx';
+import { SearchableSelect, TextareaField, FormError } from '../ui/Form.jsx';
 import { Skeleton } from '../ui/Skeleton.jsx';
 
 /**
@@ -283,13 +283,18 @@ function UploadModal({ assetId, onClose, onUploaded }) {
           </label>
         </div>
 
-        <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="invoice">Faktur/Nota Pembelian</option>
-          <option value="warranty">Kartu Garansi</option>
-          <option value="manual">Manual/Panduan</option>
-          <option value="photo">Foto Kondisi</option>
-          <option value="other">Lainnya</option>
-        </SelectField>
+        <SearchableSelect
+          label="Kategori" value={category} onChange={setCategory} clearable={false}
+          options={[
+            { value: 'invoice', label: 'Faktur/Nota Pembelian' },
+            { value: 'warranty', label: 'Kartu Garansi' },
+            { value: 'manual', label: 'Manual/Panduan' },
+            { value: 'photo', label: 'Foto Kondisi' },
+            { value: 'other', label: 'Lainnya' },
+          ]}
+          getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+          placeholder="Cari kategori…"
+        />
 
         <TextareaField
           label="Catatan (opsional)" value={notes} onChange={(e) => setNotes(e.target.value)}

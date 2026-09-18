@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
+import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
@@ -11,7 +11,7 @@ import PageHeader from '../components/ui/PageHeader.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
-import { TextField, SelectField, TextareaField, FormError } from '../components/ui/Form.jsx';
+import { TextField, SearchableSelect, DateField, TextareaField, FormError } from '../components/ui/Form.jsx';
 import { todayLocal } from '../utils/dateLocal.js';
 
 /**
@@ -33,6 +33,7 @@ const tanggalPanjang = (v) =>
   v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
 
 export default function RequestDetail() {
+  useLayoutWidth('narrow');
   const { id } = useParams();
   const { can } = useAuth();
   const { pushError, pushSuccess } = useNotification();
@@ -73,15 +74,15 @@ export default function RequestDetail() {
 
   if (!item) {
     return (
-      <Layout width="narrow">
+      <>
         <Skeleton className="h-7 w-64 mb-6" />
         <Card><Skeleton className="h-64 w-full" /></Card>
-      </Layout>
+      </>
     );
   }
 
   return (
-    <Layout width="narrow">
+    <>
       <PageHeader
         backTo="/requests"
         backLabel="Permintaan Aset"
@@ -202,7 +203,7 @@ export default function RequestDetail() {
           onDone={(msg) => { setShowFulfill(false); pushSuccess(msg); muat(); }}
         />
       )}
-    </Layout>
+    </>
   );
 }
 
@@ -330,15 +331,15 @@ function FulfillModal({ item, onClose, onDone }) {
               : 'Tidak ada aset berstatus menganggur saat ini.'}
           />
         ) : (
-          <SelectField label="Pilih Aset" required value={assetId} onChange={(e) => setAssetId(e.target.value)}>
-            <option value="">— Pilih aset —</option>
-            {assets.map((a) => (
-              <option key={a.id} value={a.id}>{a.asset_code} · {a.name}{a.brand ? ` (${a.brand})` : ''}</option>
-            ))}
-          </SelectField>
+          <SearchableSelect
+            label="Pilih Aset" required value={assetId} onChange={setAssetId}
+            options={assets} getOptionValue={(a) => a.id}
+            getOptionLabel={(a) => `${a.asset_code} · ${a.name}${a.brand ? ` (${a.brand})` : ''}`}
+            placeholder="Cari aset…" emptyLabel="— Pilih aset —"
+          />
         )}
 
-        <TextField label="Tanggal Serah Terima" type="date" required value={assignedAt} onChange={(e) => setAssignedAt(e.target.value)} />
+        <DateField label="Tanggal Serah Terima" required value={assignedAt} onChange={(e) => setAssignedAt(e.target.value)} />
         <TextareaField label="Catatan (opsional)" value={assignNote} onChange={(e) => setAssignNote(e.target.value)} />
 
         <FormError>{error}</FormError>

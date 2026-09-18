@@ -15,6 +15,7 @@ function signToken(user) {
   return jwt.sign(
     {
       id: user.id,
+      tenantId: user.tenant_id,
       username: user.username,
       name: user.name,
       email: user.email,
@@ -22,7 +23,7 @@ function signToken(user) {
       tokenVersion: user.token_version,
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h', algorithm: 'HS256' }
   );
 }
 

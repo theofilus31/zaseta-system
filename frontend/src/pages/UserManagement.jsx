@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -9,7 +8,7 @@ import PageHeader from '../components/ui/PageHeader.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import PasswordInput from '../components/ui/PasswordInput.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
-import { TextField, SelectField, FormError } from '../components/ui/Form.jsx';
+import { TextField, SearchableSelect, FormError } from '../components/ui/Form.jsx';
 import PermissionMatrix from '../components/users/PermissionMatrix.jsx';
 import { MODULES } from '../constants/modules.js';
 
@@ -17,7 +16,7 @@ const EMPTY_FORM = { id: null, username: '', name: '', email: '', password: '', 
 
 export default function UserManagement() {
   const { user: currentUser, can } = useAuth();
-  const { pushSuccess, pushError } = useNotification();
+  const { pushSuccess, pushError, pushLimitError } = useNotification();
 
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -89,19 +88,24 @@ export default function UserManagement() {
       };
 
       if (isEdit) {
-        // Kata sandi hanya dikirim kalau memang diisi
+        // Kata sandi hanya dikirim kalau memang diisi — admin tetap bisa
+        // mengatur ulang kata sandi pengguna langsung dari sini kapan saja.
         if (form.password) payload.password = form.password;
         await axiosClient.put(`/users/${form.id}`, payload);
         pushSuccess(`Pengguna "${form.name}" berhasil diperbarui.`);
       } else {
-        payload.password = form.password;
-        await axiosClient.post('/users', payload);
-        pushSuccess(`Pengguna "${form.name}" berhasil ditambahkan.`);
+        // Kata sandi TIDAK dikirim — dibuatkan sistem dan langsung dikirim
+        // ke surel pengguna baru, lihat pesan dari backend.
+        const res = await axiosClient.post('/users', payload);
+        pushSuccess(res.data.message || `Pengguna "${form.name}" berhasil ditambahkan.`);
       }
       resetForm();
       load();
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal menyimpan pengguna.');
+      // Batas paket (PLAN_LIMIT_REACHED) dapat tambahan CTA "Upgrade Plan"
+      // di toast — pesan inline di atas saja tidak punya tempat untuk tombol.
+      if (err.response?.data?.code === 'PLAN_LIMIT_REACHED') pushLimitError(err);
     } finally {
       setSaving(false);
     }
@@ -120,7 +124,7 @@ export default function UserManagement() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
         eyebrow="Administrasi"
         title="Manajemen Pengguna"
@@ -162,16 +166,23 @@ export default function UserManagement() {
                   placeholder="budi@perusahaan.com"
                 />
 
-                <PasswordInput
-                  label={isEdit ? 'Kata Sandi Baru' : 'Kata Sandi'}
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  required={!isEdit}
-                  autoComplete="new-password"
-                  placeholder={isEdit ? 'Kosongkan jika tidak diganti' : 'Minimal 8 karakter'}
-                  hint={isEdit ? 'Biarkan kosong agar kata sandi lama tetap berlaku.' : undefined}
-                />
+                {isEdit ? (
+                  <PasswordInput
+                    label="Kata Sandi Baru (opsional)"
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    placeholder="Kosongkan jika tidak diganti"
+                    hint="Biarkan kosong agar kata sandi lama tetap berlaku. Diisi hanya kalau Anda ingin mengatur ulang kata sandinya sendiri di sini."
+                  />
+                ) : (
+                  <p className="flex gap-2.5 rounded-xl bg-info-50 px-3.5 py-3 text-xs text-info-700 leading-relaxed">
+                    <i className="fas fa-circle-info mt-0.5 shrink-0" aria-hidden="true" />
+                    Kata sandi tidak perlu ditentukan di sini — sistem membuatkan kata sandi awal secara
+                    otomatis dan mengirimkannya langsung ke surel pengguna begitu akun ini disimpan.
+                  </p>
+                )}
 
                 {/* Menggantikan dropdown peran bertingkat yang lama. Yang tersisa
                     hanya pembedaan yang benar-benar berpengaruh: akses penuh, atau
@@ -201,10 +212,17 @@ export default function UserManagement() {
                   </label>
                 </div>
 
-                <SelectField label="Status Akun" name="status" value={form.status} onChange={handleChange}>
-                  <option value="active">Aktif</option>
-                  <option value="inactive">Nonaktif</option>
-                </SelectField>
+                <SearchableSelect
+                  label="Status Akun" value={form.status}
+                  onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                  clearable={false} searchable={false}
+                  options={[
+                    { value: 'active', label: 'Aktif' },
+                    { value: 'inactive', label: 'Nonaktif' },
+                  ]}
+                  getOptionLabel={(o) => o.label} getOptionValue={(o) => o.value}
+                  placeholder="Pilih status…"
+                />
 
                 <FormError>{error}</FormError>
 
@@ -365,6 +383,6 @@ export default function UserManagement() {
           </Card>
         </div>
       </div>
-    </Layout>
+    </>
   );
 }

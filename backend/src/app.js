@@ -24,9 +24,40 @@ const consumableRoutes = require('./routes/consumableRoutes');
 const requestRoutes = require('./routes/requestRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const zecodeRoutes = require('./routes/zecodeRoutes');
+const billingRoutes = require('./routes/billingRoutes');
+const platformRoutes = require('./routes/platformRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+
+/* Fase 6 (pengerasan keamanan) — WAJIB diaktifkan supaya express-rate-limit
+   (dipakai loginLimiter, signupLimiter, passwordResetLimiter, publicLimiter)
+   bisa membaca req.ip dengan benar begitu aplikasi berjalan di belakang
+   reverse proxy/load balancer (Nginx, Cloudflare, PaaS mana pun — hampir
+   pasti terjadi di produksi, tidak seperti pengembangan lokal ini). TANPA
+   ini, express-rate-limit v8+ MELEMPAR ERROR begitu ada header
+   X-Forwarded-For di request (persis yang terjadi begitu online di belakang
+   proxy) — login/daftar/lupa-sandi bisa mati total. Nilai bawaan 1 =
+   percaya SATU lapis proxy terdekat (topologi paling umum: satu reverse
+   proxy/load balancer langsung di depan Node) — atur TRUST_PROXY_HOPS di
+   .env kalau topologi produksi berbeda (mis. Cloudflare + Nginx = 2 lapis).
+   Aman dibiarkan di pengembangan lokal ini: request langsung ke server tidak
+   pernah membawa X-Forwarded-For, jadi pengaturan ini tidak berpengaruh
+   sampai benar-benar ada proxy di depan. */
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+
+/* JWT_SECRET WAJIB diisi dengan nilai acak yang cukup panjang, sama seperti
+   FRONTEND_URL di bawah — gagal-di-awal jauh lebih aman daripada
+   gagal-diam-diam-jadi-terbuka. Siapa pun yang tahu/menebak nilai ini bisa
+   memalsukan token masuk untuk akun MANA PUN, termasuk admin platform —
+   ini bukan sekadar praktik baik, kalau ini lolos ke produksi dengan nilai
+   lemah/bawaan artinya seluruh sistem otentikasi runtuh. */
+const PLACEHOLDER_JWT_SECRETS = new Set(['change_this_to_a_long_random_secret', 'secret', 'changeme']);
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || PLACEHOLDER_JWT_SECRETS.has(process.env.JWT_SECRET)) {
+  throw new Error(
+    'JWT_SECRET belum diisi dengan benar di .env — wajib string acak (bukan nilai contoh), minimal 32 karakter.'
+  );
+}
 
 /* Header keamanan bawaan (X-Content-Type-Options, X-Frame-Options, dst.) —
    lapisan pertahanan kedua di luar CORS. crossOriginResourcePolicy DIATUR
@@ -73,6 +104,8 @@ app.use('/api/consumables', consumableRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/zecode', zecodeRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/platform', platformRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

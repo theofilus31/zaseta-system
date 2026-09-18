@@ -13,7 +13,7 @@ export const STATUS_CONFIG = {
   dipakai: {
     label: 'Dipakai',
     icon: 'fa-circle-check',
-    chart: '#338ccb',
+    chart: '#2f6fa8',
     className: 'bg-info-50 text-info-700 ring-info-500/20',
     dot: 'bg-info-500',
   },
@@ -21,7 +21,7 @@ export const STATUS_CONFIG = {
   idle: {
     label: 'Menganggur',
     icon: 'fa-box-open',
-    chart: '#47b648',
+    chart: '#2f9c4f',
     className: 'bg-brand-50 text-brand-700 ring-brand-500/20',
     dot: 'bg-brand-500',
   },
@@ -29,7 +29,7 @@ export const STATUS_CONFIG = {
   dijual: {
     label: 'Dijual',
     icon: 'fa-tag',
-    chart: '#fca91c',
+    chart: '#c98a1a',
     className: 'bg-warning-50 text-warning-700 ring-warning-500/25',
     dot: 'bg-warning-500',
   },
@@ -45,7 +45,7 @@ export const STATUS_CONFIG = {
   hilang: {
     label: 'Hilang',
     icon: 'fa-circle-question',
-    chart: '#dc2626',
+    chart: '#a13624',
     className: 'bg-danger-50 text-danger-700 ring-danger-500/25',
     dot: 'bg-danger-600',
   },
@@ -61,7 +61,7 @@ export const STATUS_CONFIG = {
   dipindah: {
     label: 'Dipindahkan',
     icon: 'fa-location-dot',
-    chart: '#a855f7',
+    chart: '#8b4fb0',
     className: 'bg-accent-50 text-accent-700 ring-accent-500/20',
     dot: 'bg-accent-500',
   },

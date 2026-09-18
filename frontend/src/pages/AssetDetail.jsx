@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -133,7 +132,7 @@ export default function AssetDetail() {
   /* ---------- Keadaan memuat ---------- */
   if (!asset) {
     return (
-      <Layout>
+      <>
         <Skeleton className="h-4 w-24 mb-3" />
         <Skeleton className="h-7 w-64 mb-2" />
         <Skeleton className="h-4 w-40 mb-7" />
@@ -144,7 +143,7 @@ export default function AssetDetail() {
           </div>
           <Card><Skeleton className="h-44 w-full" /></Card>
         </div>
-      </Layout>
+      </>
     );
   }
 
@@ -153,7 +152,7 @@ export default function AssetDetail() {
   const activeCustomFields = (asset.customFields || []).filter((cf) => cf.value_text);
 
   return (
-    <Layout>
+    <>
       <PageHeader
         backTo="/assets"
         backLabel="Daftar Aset"
@@ -281,7 +280,7 @@ export default function AssetDetail() {
                 <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">Nilai Buku Saat Ini</p>
-                    <p className="text-2xl font-bold text-ink-900 tabular-nums mt-1">
+                    <p className="text-2xl font-black text-ink-900 tabular-nums mt-1">
                       {rupiah(asset.depreciation.bookValue)}
                     </p>
                   </div>
@@ -375,7 +374,7 @@ export default function AssetDetail() {
                       <th>Periode</th>
                       <th>Kondisi Kembali</th>
                       <th>Catatan</th>
-                      <th className="print-hide">BAST</th>
+                      <th className="print-hide">Berita Acara</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -541,7 +540,7 @@ export default function AssetDetail() {
                     to={`/assignments/${asset.currentAssignment.id}/bast?type=serah`}
                     target="_blank"
                   >
-                    <i className="fas fa-file-signature text-xs" aria-hidden="true" /> Cetak BAST
+                    <i className="fas fa-file-signature text-xs" aria-hidden="true" /> Cetak Berita Acara (BAST)
                   </Button>
                   {can('assets', 'edit') && (
                     <Button size="sm" block onClick={() => setShowCheckIn(true)}>
@@ -612,6 +611,6 @@ export default function AssetDetail() {
           onClose={() => setShowCheckIn(false)}
         />
       )}
-    </Layout>
+    </>
   );
 }

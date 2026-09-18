@@ -29,3 +29,7 @@ npm-debug.log*
 
 # Uploaded files (kalau ada folder upload lokal)
 uploads/
+backend/backups/
+
+# Claude Code local tool permissions (machine-specific, not shared config)
+.claude/settings.local.json

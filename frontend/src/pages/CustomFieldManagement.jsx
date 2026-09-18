@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -7,7 +6,7 @@ import Button from '../components/ui/Button.jsx';
 import PageHeader, { MasterDataLayout } from '../components/ui/PageHeader.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
-import { TextField, SelectField, Checkbox, FormError } from '../components/ui/Form.jsx';
+import { TextField, SearchableSelect, Checkbox, FormError } from '../components/ui/Form.jsx';
 
 /* Label bahasa Indonesia untuk tipe bidang — sebelumnya nilai mentahnya
    ('textarea', 'boolean') ditampilkan apa adanya ke admin. */
@@ -81,9 +80,9 @@ export default function CustomFieldManagement() {
   }
 
   return (
-    <Layout>
+    <>
       <PageHeader
-        eyebrow="Master Data"
+        eyebrow="Data Acuan"
         title="Bidang Kustom"
         description="Tambahkan kolom data sendiri tanpa mengubah struktur database — misalnya Tanggal Garansi atau Nomor Lisensi."
       />
@@ -97,15 +96,15 @@ export default function CustomFieldManagement() {
             />
 
             <div className="space-y-4">
-              <SelectField
+              <SearchableSelect
                 label="Berlaku Untuk"
                 value={form.categoryId}
-                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                onChange={(v) => setForm({ ...form, categoryId: v })}
                 hint="Pilih kode barang tertentu agar bidang ini hanya muncul untuk aset di kelompok itu."
-              >
-                <option value="">Global — semua kode barang/aset</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </SelectField>
+                options={categories}
+                emptyLabel="Global — semua kode barang/aset"
+                placeholder="Cari kode barang/aset…"
+              />
 
               <TextField
                 label="Kunci Bidang" required
@@ -124,13 +123,14 @@ export default function CustomFieldManagement() {
                 hint="Teks yang dilihat staf saat mengisi form aset."
               />
 
-              <SelectField
+              <SearchableSelect
                 label="Tipe Bidang"
                 value={form.fieldType}
-                onChange={(e) => setForm({ ...form, fieldType: e.target.value })}
-              >
-                {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </SelectField>
+                onChange={(v) => setForm({ ...form, fieldType: v })}
+                clearable={false} searchable={false}
+                options={FIELD_TYPES} getOptionLabel={(t) => t.label} getOptionValue={(t) => t.value}
+                placeholder="Pilih tipe bidang…"
+              />
 
               {form.fieldType === 'select' && (
                 <TextField
@@ -164,15 +164,14 @@ export default function CustomFieldManagement() {
               description={`${fields.length} bidang aktif`}
               bordered
               action={
-                <select
+                <SearchableSelect
                   value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  onChange={setCategoryFilter}
                   aria-label="Saring menurut kode barang/aset"
-                  className="field-select field-sunken !py-2 !text-[13px] max-w-[13rem]"
-                >
-                  <option value="">Semua bidang</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                  options={categories}
+                  placeholder="Semua bidang" emptyLabel="Semua bidang"
+                  sunken className="max-w-[13rem]" inputClassName="!py-2 !text-[13px]"
+                />
               }
             />
 
@@ -226,6 +225,6 @@ export default function CustomFieldManagement() {
           </Card>
         }
       />
-    </Layout>
+    </>
   );
 }

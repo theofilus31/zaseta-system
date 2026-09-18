@@ -6,6 +6,10 @@ const uploadImage = require('../middleware/uploadImage');
 
 router.use(authenticate);
 
+/* Tanpa requirePermission: sidebar/topbar butuh merek tenant untuk SEMUA
+   pengguna yang login, bukan cuma yang boleh buka menu Pengaturan. */
+router.get('/branding', ctrl.getMyBranding);
+
 router.get('/', requirePermission('settings', 'view'), ctrl.getSettings);
 router.put('/', requirePermission('settings', 'edit'), ctrl.updateSettings);
 

@@ -7,13 +7,15 @@ import Button from '../components/ui/Button.jsx';
  *  PENJAGA PERUBAHAN BELUM TERSIMPAN
  * ============================================================================
  *  Halaman form (Tambah/Ubah Aset) mendaftarkan status "kotor"-nya lewat
- *  useUnsavedChanges(isDirty). Setiap navigasi yang berpotensi membuang isian
- *  — tombol Kembali di Topbar, tombol Batal di form — dijalankan lewat
- *  requestNavigation(), yang menahannya dulu dengan dialog konfirmasi selama
- *  masih ada perubahan yang belum disimpan.
+ *  useUnsavedChanges(isDirty). Navigasi yang berpotensi membuang isian —
+ *  tombol Batal di form — dijalankan lewat requestNavigation(), yang
+ *  menahannya dulu dengan dialog konfirmasi selama masih ada perubahan yang
+ *  belum disimpan. (Dulu juga mencakup tombol "Kembali" di kerangka
+ *  aplikasi — sudah tidak ada lagi sejak sidebar diganti sistem tab ala
+ *  Chrome, digantikan membuka lagi menu sidebar yang sesuai atau menutup
+ *  tabnya, lihat TabsContext.jsx.)
  *
  *  Cakupan yang DITANGANI:
- *    - tombol Kembali milik aplikasi (Topbar)
  *    - tombol Batal pada form
  *    - refresh / tutup tab (lewat event beforeunload bawaan peramban)
  *

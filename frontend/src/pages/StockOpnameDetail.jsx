@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -88,18 +87,16 @@ export default function StockOpnameDetail() {
   }
 
   if (loading) {
-    return <Layout><Card><SkeletonList count={6} /></Card></Layout>;
+    return <Card><SkeletonList count={6} /></Card>;
   }
   if (!session) {
     return (
-      <Layout>
-        <EmptyState
-          icon="fa-clipboard-question"
-          title="Sesi tidak ditemukan"
-          description="Sesi opname ini mungkin sudah dihapus."
-          action={<Button to="/opname">Kembali ke Daftar</Button>}
-        />
-      </Layout>
+      <EmptyState
+        icon="fa-clipboard-question"
+        title="Sesi tidak ditemukan"
+        description="Sesi opname ini mungkin sudah dihapus."
+        action={<Button to="/opname">Kembali ke Daftar</Button>}
+      />
     );
   }
 
@@ -109,7 +106,7 @@ export default function StockOpnameDetail() {
     .filter(Boolean).join(' · ') || 'Seluruh aset aktif';
 
   return (
-    <Layout>
+    <>
       <PageHeader
         backTo="/opname"
         backLabel="Daftar Opname"
@@ -206,7 +203,7 @@ export default function StockOpnameDetail() {
           onFinished={(msg) => { setShowFinish(false); pushSuccess(msg); muat(); }}
         />
       )}
-    </Layout>
+    </>
   );
 }
 

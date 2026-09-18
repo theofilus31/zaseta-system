@@ -9,7 +9,14 @@
 
 function toCsvCell(value) {
   if (value === null || value === undefined) return '';
-  const str = String(value);
+  let str = String(value);
+  /* Suntikan formula (CSV/Formula Injection): Excel/Sheets menjalankan sel
+     yang diawali =, +, -, @, atau tab sebagai rumus begitu berkasnya dibuka —
+     bukan cuma menampilkannya sebagai teks. Karena nilai-nilai ini berasal
+     dari input bebas pengguna (nama aset, catatan, alasan permintaan, dst.),
+     awalan seperti itu diberi apostrof supaya dibaca sebagai teks literal,
+     bukan dieksekusi. */
+  if (/^[=+\-@\t]/.test(str)) str = `'${str}`;
   // Bungkus dengan tanda kutip kalau mengandung pemisah, kutip, atau baris baru.
   return /[",\r\n;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }

@@ -10,10 +10,10 @@ import EmptyState from '../ui/EmptyState.jsx';
  * ============================================================================
  *  ZECODE — WIDGET CHAT AI INTERNAL
  * ============================================================================
- *  Zecode berjalan LOKAL lewat Ollama di server aplikasi ini sendiri — bukan
- *  layanan AI pihak luar. Widget ini cuma antarmukanya; seluruh pemahaman
- *  bahasa dan pengambilan data terjadi di backend (lihat
- *  backend/src/services/zecodeIntents.js dan zecodeData.js).
+ *  Zecode dijawab lewat Gemini API (Google) di backend — bukan model lokal.
+ *  Widget ini cuma antarmukanya; seluruh pemahaman bahasa dan pengambilan
+ *  data terjadi di backend (lihat backend/src/services/zecodeIntents.js dan
+ *  zecodeData.js).
  *
  *  Tombol mengambang muncul di SEMUA halaman berkerangka (lewat Layout.jsx)
  *  untuk pengguna yang punya izin `zecode.view` — sama seperti lonceng
@@ -145,7 +145,7 @@ export function ZecodePanel({ onClose, variant = 'floating' }) {
       setMessages((m) => [...m, res.data.message]);
       loadConversations();
     } catch (err) {
-      /* Kalau Ollama gagal/timeout, backend TETAP menyimpan pesan galat itu
+      /* Kalau Gemini gagal/timeout, backend TETAP menyimpan pesan galat itu
          sebagai balasan asisten sungguhan (lihat zecodeController.js) — body
          responsnya berbentuk sama seperti respons sukses ({ conversationId,
          message }), cuma status HTTP-nya bukan 2xx. Pakai isi itu apa adanya
@@ -161,7 +161,7 @@ export function ZecodePanel({ onClose, variant = 'floating' }) {
       } else {
         setMessages((m) => [...m, {
           id: `err-${Date.now()}`, role: 'assistant', intent: 'error',
-          content: data?.message || 'Zecode tidak bisa merespons sekarang. Pastikan layanan AI lokal (Ollama) sedang berjalan.',
+          content: data?.message || 'Zecode tidak bisa merespons sekarang. Coba lagi sesaat lagi.',
         }]);
       }
     } finally {
@@ -203,7 +203,7 @@ export function ZecodePanel({ onClose, variant = 'floating' }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-white leading-tight">Zecode</p>
-          <p className="text-[10px] text-white/75 leading-tight">Asisten AI lokal · tidak terkirim ke luar</p>
+          <p className="text-[10px] text-white/75 leading-tight">Asisten AI internal · ditenagai Gemini</p>
         </div>
         <button
           onClick={() => setShowHistory((v) => !v)}

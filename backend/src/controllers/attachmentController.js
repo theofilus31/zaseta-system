@@ -48,6 +48,12 @@ function toMeta(row) {
 // base64 di sini akan membuat halaman itu lambat begitu ada beberapa lampiran.
 const listAttachments = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  // asset_attachments TIDAK punya kolom tenant_id sendiri — keamanan lintas-tenant
+  // bergantung sepenuhnya pada pengecekan kepemilikan aset induk ini.
+  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+  if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
   const [rows] = await pool.query(
     `SELECT a.id, a.asset_id, a.category, a.file_name, a.mime_type, a.file_size, a.notes, a.created_at,
@@ -73,7 +79,7 @@ const uploadAttachment = asyncHandler(async (req, res) => {
   }
 
   const [assetRows] = await pool.query(
-    `SELECT id FROM assets WHERE id = :id AND deleted_at IS NULL`, { id }
+    `SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL`, { id, tenantId: req.user.tenant_id }
   );
   if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
@@ -81,7 +87,8 @@ const uploadAttachment = asyncHandler(async (req, res) => {
 
   const [result] = await pool.query(
     `INSERT INTO asset_attachments (asset_id, category, file_name, mime_type, file_size, data, notes, uploaded_by)
-     VALUES (:assetId, :category, :fileName, :mimeType, :fileSize, :data, :notes, :userId)`,
+     VALUES (:assetId, :category, :fileName, :mimeType, :fileSize, :data, :notes, :userId)
+     RETURNING id`,
     {
       assetId: id,
       category,
@@ -114,6 +121,10 @@ const uploadAttachment = asyncHandler(async (req, res) => {
 // GET /api/assets/:id/attachments/:attachmentId — unduh/tampilkan isi berkas
 const downloadAttachment = asyncHandler(async (req, res) => {
   const { id, attachmentId } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+  if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
   const [rows] = await pool.query(
     `SELECT * FROM asset_attachments WHERE id = :attachmentId AND asset_id = :id`,
@@ -137,6 +148,10 @@ const downloadAttachment = asyncHandler(async (req, res) => {
 // DELETE /api/assets/:id/attachments/:attachmentId
 const deleteAttachment = asyncHandler(async (req, res) => {
   const { id, attachmentId } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  const [assetRows] = await pool.query(`SELECT id FROM assets WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+  if (!assetRows[0]) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
   const [rows] = await pool.query(
     `SELECT * FROM asset_attachments WHERE id = :attachmentId AND asset_id = :id`,

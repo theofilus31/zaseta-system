@@ -4,8 +4,11 @@ const logAudit = require('../utils/auditLogger');
 const generateAssetQr = require('../utils/qrGenerator');
 const buildAssetCode = require('../utils/assetCodeGenerator');
 const parseCsv = require('../utils/csvParser');
+const { toCsvCell } = require('../utils/csv');
 const { calculateDepreciation, warrantyStatus } = require('../utils/depreciation');
 const { todayLocal } = require('../utils/dateLocal');
+const { clampPagination } = require('../utils/pagination');
+const { getPlan } = require('../config/plans');
 
 const MAX_CODE_GENERATION_RETRIES = 5;
 
@@ -43,7 +46,10 @@ async function getCustomFieldValues(assetId) {
      ORDER BY cf.sort_order ASC`,
     { assetId }
   );
-  return rows.map(r => ({ ...r, field_options: r.field_options ? JSON.parse(r.field_options) : null }));
+  // field_options kolom JSONB — driver pg sudah mengurainya jadi objek/array
+  // JS sendiri (beda dari mysql2 yang mengembalikan string JSON mentah),
+  // jadi TIDAK dipanggil JSON.parse() lagi di sini.
+  return rows.map(r => ({ ...r, field_options: r.field_options || null }));
 }
 
 // Helper: simpan/update custom field values (upsert)
@@ -57,10 +63,30 @@ async function saveCustomFieldValues(assetId, customFields, runner = pool) {
     await runner.query(
       `INSERT INTO asset_custom_field_values (asset_id, custom_field_id, value_text)
        VALUES (:assetId, :fieldId, :value)
-       ON DUPLICATE KEY UPDATE value_text = :value, updated_at = NOW()`,
+       ON CONFLICT (asset_id, custom_field_id) DO UPDATE SET value_text = :value, updated_at = NOW()`,
       { assetId, fieldId, value: value === null || value === undefined ? null : String(value) }
     );
   }
+}
+
+/**
+ * Ubah teks pencarian bebas jadi ekspresi `to_tsquery('simple', ...)` yang
+ * aman — tiap kata diberi akhiran `:*` (pencarian AWALAN, padanan mode
+ * boolean MySQL `kata*`) lalu digabung `&` (semua kata harus cocok).
+ * Karakter di luar huruf/angka dibuang dari tiap kata supaya tidak pernah
+ * menghasilkan sintaks tsquery yang tidak valid — `to_tsquery` melempar
+ * galat kalau inputnya bukan ekspresi tsquery yang sah (beda dari
+ * `plainto_tsquery`/`websearch_to_tsquery` yang lebih toleran tapi TIDAK
+ * mendukung pencarian awalan sama sekali).
+ */
+function toPrefixTsQuery(search) {
+  const words = String(search)
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+  if (words.length === 0) return ''; // to_tsquery('') valid, tidak pernah cocok apa pun — aman
+  return words.map((w) => `${w}:*`).join(' & ');
 }
 
 /**
@@ -69,15 +95,21 @@ async function saveCustomFieldValues(assetId, customFields, runner = pool) {
  * persis sama dengan apa yang sedang dilihat pengguna di layar — kalau kedua
  * tempat menyusun filternya sendiri-sendiri, keduanya pasti akan menyimpang.
  */
-function buildAssetFilter(query) {
+function buildAssetFilter(query, tenantId) {
   const { search = '', categoryId, assetTypeId, locationId, subLocationId, status, condition, departmentId } = query;
 
-  const conditions = ['a.deleted_at IS NULL'];
-  const params = {};
+  const conditions = ['a.deleted_at IS NULL', 'a.tenant_id = :tenantId'];
+  const params = { tenantId };
 
   if (search) {
-    conditions.push('(MATCH(a.name, a.brand, a.model, a.serial_number) AGAINST (:search IN BOOLEAN MODE) OR a.asset_code LIKE :searchLike)');
-    params.search = `${search}*`;
+    // Padanan PostgreSQL untuk FULLTEXT INDEX + MATCH...AGAINST(... IN
+    // BOOLEAN MODE) MySQL: kolom tsvector tersimpan `search_vector`
+    // (lihat schema.postgres.sql) dicari lewat to_tsquery(), dibangun dari
+    // teks pencarian bebas lewat toPrefixTsQuery() supaya tetap mendukung
+    // pencarian awalan kata (ketik "lap" tetap menemukan "laptop") sama
+    // seperti perilaku `search*` di mode boolean MySQL sebelumnya.
+    conditions.push('(a.search_vector @@ to_tsquery(\'simple\', :search) OR a.asset_code ILIKE :searchLike)');
+    params.search = toPrefixTsQuery(search);
     params.searchLike = `%${search}%`;
   }
   if (categoryId) {
@@ -124,9 +156,9 @@ function buildAssetFilter(query) {
 
 // GET /api/assets?search=&categoryId=&assetTypeId=&locationId=&subLocationId=&status=&condition=&page=&limit=
 const listAssets = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
-  const { whereClause, params } = buildAssetFilter(req.query);
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
+  const { whereClause, params } = buildAssetFilter(req.query, req.user.tenant_id);
 
   const [rows] = await pool.query(
     `SELECT a.id, a.asset_code, a.name, a.brand, a.model, a.status, a.condition_status,
@@ -176,7 +208,7 @@ const listAssets = asyncHandler(async (req, res) => {
  *
  * @returns {Promise<object|null>} null kalau aset tidak ada / sudah dihapus
  */
-async function buildAssetDetail(id) {
+async function buildAssetDetail(id, tenantId) {
   const [rows] = await pool.query(
     `SELECT a.*, c.name AS category_name, t.name AS asset_type_name, d.code AS department_code, d.name AS department_name, l.name AS location_name, l.code AS location_code,
             sl.name AS sub_location_name, sl.code AS sub_location_code,
@@ -189,8 +221,8 @@ async function buildAssetDetail(id) {
      LEFT JOIN departments d ON d.id = a.department_id
      LEFT JOIN locations ol ON ol.id = a.origin_location_id
      LEFT JOIN sub_locations osl ON osl.id = a.origin_sub_location_id
-     WHERE a.id = :id AND a.deleted_at IS NULL`,
-    { id }
+     WHERE a.id = :id AND a.tenant_id = :tenantId AND a.deleted_at IS NULL`,
+    { id, tenantId }
   );
   const asset = rows[0];
   if (!asset) return null;
@@ -232,7 +264,7 @@ async function buildAssetDetail(id) {
 
 // GET /api/assets/:id
 const getAsset = asyncHandler(async (req, res) => {
-  const detail = await buildAssetDetail(req.params.id);
+  const detail = await buildAssetDetail(req.params.id, req.user.tenant_id);
   if (!detail) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
   res.json(detail);
 });
@@ -253,12 +285,14 @@ const getAssetByCode = asyncHandler(async (req, res) => {
   const { code } = req.params;
 
   const [rows] = await pool.query(
-    `SELECT asset_id FROM qr_codes WHERE code = :code LIMIT 1`,
-    { code }
+    `SELECT q.asset_id FROM qr_codes q
+     JOIN assets a ON a.id = q.asset_id
+     WHERE q.code = :code AND a.tenant_id = :tenantId LIMIT 1`,
+    { code, tenantId: req.user.tenant_id }
   );
   if (!rows[0]) return res.status(404).json({ message: 'Kode QR tidak dikenali.' });
 
-  const detail = await buildAssetDetail(rows[0].asset_id);
+  const detail = await buildAssetDetail(rows[0].asset_id, req.user.tenant_id);
   if (!detail) return res.status(404).json({ message: 'Aset untuk Kode QR ini sudah dihapus.' });
 
   res.json(detail);
@@ -281,6 +315,19 @@ const createAsset = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Alasan wajib diisi untuk status Hilang atau Dihapuskan.' });
   }
 
+  const tenantId = req.user.tenant_id;
+
+  // assetTypeId & departmentId datang dari input pemakai dan opsional — categoryId/locationId/subLocationId
+  // sudah divalidasi kepemilikan tenant-nya di dalam buildAssetCode, jadi tinggal dua ini yang perlu dicek di sini.
+  if (assetTypeId) {
+    const [typeRows] = await pool.query(`SELECT id FROM asset_types WHERE id = :assetTypeId AND tenant_id = :tenantId`, { assetTypeId, tenantId });
+    if (!typeRows[0]) return res.status(400).json({ message: 'Kategori aset tidak valid.' });
+  }
+  if (departmentId) {
+    const [deptRows] = await pool.query(`SELECT id FROM departments WHERE id = :departmentId AND tenant_id = :tenantId`, { departmentId, tenantId });
+    if (!deptRows[0]) return res.status(400).json({ message: 'Departemen tidak valid.' });
+  }
+
   const hasManualInput = manualSequence !== undefined && manualSequence !== null && String(manualSequence).trim() !== '';
 
   /* Generate QR di luar transaksi — murni komputasi (bikin UUID + gambar QR),
@@ -299,14 +346,15 @@ const createAsset = asyncHandler(async (req, res) => {
 
     let result;
     for (let attempt = 1; attempt <= MAX_CODE_GENERATION_RETRIES; attempt++) {
-      ({ assetCode, sequenceNo } = await buildAssetCode({ locationId, subLocationId, categoryId, manualSequence }));
+      ({ assetCode, sequenceNo } = await buildAssetCode({ tenantId, locationId, subLocationId, categoryId, manualSequence }));
 
       try {
         [result] = await conn.query(
-          `INSERT INTO assets (asset_code, sequence_no, category_id, asset_type_id, name, brand, model, serial_number, spec_detail, condition_status, status, location_id, sub_location_id, department_id, purchase_date, purchase_price, warranty_expiry, useful_life_months, salvage_value, sale_value_net, sold_date, sold_price, vendor, notes, retired_date, retired_reason, retired_doc_no, created_by, updated_by)
-           VALUES (:assetCode, :sequenceNo, :categoryId, :assetTypeId, :name, :brand, :model, :serialNumber, :specDetail, :condition, :status, :locationId, :subLocationId, :departmentId, :purchaseDate, :purchasePrice, :warrantyExpiry, :usefulLifeMonths, :salvageValue, :saleValueNet, :soldDate, :soldPrice, :vendor, :notes, :retiredDate, :retiredReason, :retiredDocNo, :userId, :userId)`,
+          `INSERT INTO assets (tenant_id, asset_code, sequence_no, category_id, asset_type_id, name, brand, model, serial_number, spec_detail, condition_status, status, location_id, sub_location_id, department_id, purchase_date, purchase_price, warranty_expiry, useful_life_months, salvage_value, sale_value_net, sold_date, sold_price, vendor, notes, retired_date, retired_reason, retired_doc_no, created_by, updated_by)
+           VALUES (:tenantId, :assetCode, :sequenceNo, :categoryId, :assetTypeId, :name, :brand, :model, :serialNumber, :specDetail, :condition, :status, :locationId, :subLocationId, :departmentId, :purchaseDate, :purchasePrice, :warrantyExpiry, :usefulLifeMonths, :salvageValue, :saleValueNet, :soldDate, :soldPrice, :vendor, :notes, :retiredDate, :retiredReason, :retiredDocNo, :userId, :userId)
+           RETURNING id`,
           {
-            assetCode, sequenceNo, categoryId, assetTypeId: assetTypeId || null, name,
+            tenantId, assetCode, sequenceNo, categoryId, assetTypeId: assetTypeId || null, name,
             brand: brand || null, model: model || null, serialNumber: serialNumber || null, specDetail: specDetail || null,
             condition: condition || 'baik',
             status: status || 'idle', locationId, subLocationId: subLocationId || null,
@@ -326,7 +374,9 @@ const createAsset = asyncHandler(async (req, res) => {
         );
         break; // berhasil, keluar dari loop retry
       } catch (err) {
-        const isDuplicate = err.code === 'ER_DUP_ENTRY';
+        // '23505' = unique_violation, kode SQLSTATE PostgreSQL untuk bentrok
+        // UNIQUE/PRIMARY KEY — padanan 'ER_DUP_ENTRY' mysql2 yang dipakai di sini sebelumnya.
+        const isDuplicate = err.code === '23505';
         // Kalau nomor diisi manual dan ternyata bentrok (race condition langka), jangan diam-diam ganti nomor — beri tahu user.
         if (isDuplicate && hasManualInput) {
           await conn.rollback();
@@ -377,8 +427,9 @@ const createAsset = asyncHandler(async (req, res) => {
 const updateAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const body = req.body;
+  const tenantId = req.user.tenant_id;
 
-  const [existingRows] = await pool.query(`SELECT * FROM assets WHERE id = :id AND deleted_at IS NULL`, { id });
+  const [existingRows] = await pool.query(`SELECT * FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL`, { id, tenantId });
   const existing = existingRows[0];
   if (!existing) return res.status(404).json({ message: 'Aset tidak ditemukan.' });
 
@@ -423,6 +474,30 @@ const updateAsset = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Alasan wajib diisi untuk status Hilang atau Dihapuskan.' });
   }
 
+  // categoryId/locationId/subLocationId/assetTypeId/departmentId bisa datang dari input pemakai —
+  // validasi semuanya benar-benar milik tenant ini sebelum dipakai, supaya aset tidak bisa
+  // ditautkan diam-diam ke referensi milik tenant lain (IDOR).
+  if (categoryId) {
+    const [catRows] = await pool.query(`SELECT id FROM asset_categories WHERE id = :categoryId AND tenant_id = :tenantId`, { categoryId, tenantId });
+    if (!catRows[0]) return res.status(400).json({ message: 'Kode barang/aset tidak valid.' });
+  }
+  if (assetTypeId) {
+    const [typeRows] = await pool.query(`SELECT id FROM asset_types WHERE id = :assetTypeId AND tenant_id = :tenantId`, { assetTypeId, tenantId });
+    if (!typeRows[0]) return res.status(400).json({ message: 'Kategori aset tidak valid.' });
+  }
+  if (locationId) {
+    const [locRows] = await pool.query(`SELECT id FROM locations WHERE id = :locationId AND tenant_id = :tenantId`, { locationId, tenantId });
+    if (!locRows[0]) return res.status(400).json({ message: 'Lokasi tidak valid.' });
+  }
+  if (subLocationId) {
+    const [subRows] = await pool.query(`SELECT id FROM sub_locations WHERE id = :subLocationId AND tenant_id = :tenantId`, { subLocationId, tenantId });
+    if (!subRows[0]) return res.status(400).json({ message: 'Sub lokasi tidak valid.' });
+  }
+  if (departmentId) {
+    const [deptRows] = await pool.query(`SELECT id FROM departments WHERE id = :departmentId AND tenant_id = :tenantId`, { departmentId, tenantId });
+    if (!deptRows[0]) return res.status(400).json({ message: 'Departemen tidak valid.' });
+  }
+
   const locationChanged = String(locationId || '') !== String(existing.location_id || '') || String(subLocationId || '') !== String(existing.sub_location_id || '');
   const statusChanging = status && status !== existing.status;
 
@@ -463,9 +538,9 @@ const updateAsset = asyncHandler(async (req, res) => {
        warranty_expiry = :warrantyExpiry, useful_life_months = :usefulLifeMonths, salvage_value = :salvageValue,
        sale_value_net = :saleValueNet, sold_date = :soldDate, sold_price = :soldPrice,
        vendor = :vendor, notes = :notes, updated_by = :userId
-     WHERE id = :id`,
+     WHERE id = :id AND tenant_id = :tenantId`,
     {
-      id, categoryId, assetTypeId, name, brand, model, serialNumber, specDetail,
+      id, tenantId, categoryId, assetTypeId, name, brand, model, serialNumber, specDetail,
       condition,
       status, locationId, subLocationId, departmentId,
       retiredDate, retiredReason, retiredDocNo,
@@ -507,14 +582,121 @@ const deleteAsset = asyncHandler(async (req, res) => {
      SET deleted_at = NOW(),
          sequence_no = NULL,
          asset_code = CONCAT(asset_code, '-DEL-', id)
-     WHERE id = :id AND deleted_at IS NULL`,
-    { id }
+     WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL`,
+    { id, tenantId: req.user.tenant_id }
   );
   if (result.affectedRows === 0) {
     return res.status(404).json({ message: 'Aset tidak ditemukan atau sudah dihapus sebelumnya.' });
   }
   await logAudit({ userId: req.user.id, action: 'delete', entityType: 'asset', entityId: id });
   res.json({ message: 'Aset berhasil dihapus.' });
+});
+
+/* ============================================================
+   TEMPAT SAMPAH — aset yang sudah di-soft-delete (deleted_at terisi).
+   Baris-baris ini tetap menempel ke asset_categories/asset_types/locations
+   lewat foreign key (RESTRICT khusus category_id) walau sudah "dihapus",
+   jadi kode barang/lokasi yang masih dipakai aset di tempat sampah tidak
+   bisa dihapus sampai aset itu dipulihkan atau dihapus permanen dari sini.
+   ============================================================ */
+
+// GET /api/assets/trash?search=&page=&limit=
+const listTrash = asyncHandler(async (req, res) => {
+  const { search = '' } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
+
+  const conditions = ['a.deleted_at IS NOT NULL', 'a.tenant_id = :tenantId'];
+  const params = { tenantId: req.user.tenant_id };
+  if (search) {
+    conditions.push('(a.name ILIKE :searchLike OR a.asset_code ILIKE :searchLike)');
+    params.searchLike = `%${search}%`;
+  }
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+  const [rows] = await pool.query(
+    `SELECT a.id, a.asset_code, a.name, a.brand, a.model, a.status, a.condition_status, a.deleted_at,
+            c.name AS category_name, l.name AS location_name, sl.name AS sub_location_name
+     FROM assets a
+     JOIN asset_categories c ON c.id = a.category_id
+     LEFT JOIN locations l ON l.id = a.location_id
+     LEFT JOIN sub_locations sl ON sl.id = a.sub_location_id
+     ${whereClause}
+     ORDER BY a.deleted_at DESC
+     LIMIT :limit OFFSET :offset`,
+    { ...params, limit: Number(limit), offset }
+  );
+
+  const [countRows] = await pool.query(`SELECT COUNT(*) AS total FROM assets a ${whereClause}`, params);
+
+  res.json({
+    data: rows,
+    pagination: {
+      page: Number(page),
+      limit: Number(limit),
+      total: countRows[0].total,
+      totalPages: Math.ceil(countRows[0].total / Number(limit)),
+    },
+  });
+});
+
+// PUT /api/assets/trash/:id/restore
+const restoreAsset = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user.tenant_id;
+  const [rows] = await pool.query(`SELECT * FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NOT NULL`, { id, tenantId });
+  const asset = rows[0];
+  if (!asset) {
+    return res.status(404).json({ message: 'Aset tidak ditemukan di tempat sampah.' });
+  }
+
+  /* asset_code lama sudah "dimangle" (diberi akhiran -DEL-<id>) dan
+     sequence_no-nya dibebaskan saat dihapus — mungkin sudah dipakai aset
+     lain sejak itu. Jadi dipulihkan dengan kode BARU yang disusun ulang
+     persis seperti aset baru (buildAssetCode akan menolak dengan pesan
+     jelas kalau lokasi/sub lokasi aslinya sudah tidak aktif). */
+  const { assetCode, sequenceNo } = await buildAssetCode({
+    tenantId,
+    locationId: asset.location_id,
+    subLocationId: asset.sub_location_id,
+    categoryId: asset.category_id,
+  });
+
+  await pool.query(
+    `UPDATE assets SET deleted_at = NULL, asset_code = :assetCode, sequence_no = :sequenceNo WHERE id = :id AND tenant_id = :tenantId`,
+    { id, tenantId, assetCode, sequenceNo }
+  );
+
+  await logAudit({
+    userId: req.user.id, action: 'update', entityType: 'asset', entityId: id,
+    oldValues: { deleted: true }, newValues: { restored: true, assetCode },
+  });
+  res.json({ message: 'Aset berhasil dipulihkan.', assetCode });
+});
+
+// DELETE /api/assets/trash/:id — hapus permanen, tidak bisa dibatalkan
+const permanentDeleteAsset = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.user.tenant_id;
+  const [rows] = await pool.query(
+    `SELECT id, name, asset_code FROM assets WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NOT NULL`,
+    { id, tenantId }
+  );
+  const asset = rows[0];
+  if (!asset) {
+    return res.status(404).json({ message: 'Aset tidak ditemukan di tempat sampah.' });
+  }
+
+  // Seluruh data turunan (serah terima, lampiran, bidang kustom, Kode QR,
+  // riwayat status, pengingat, pemeliharaan, baris stok opname) memakai
+  // ON DELETE CASCADE ke assets, jadi ikut terhapus otomatis di sini.
+  await pool.query(`DELETE FROM assets WHERE id = :id AND tenant_id = :tenantId`, { id, tenantId });
+
+  await logAudit({
+    userId: req.user.id, action: 'delete', entityType: 'asset', entityId: id,
+    oldValues: { name: asset.name, assetCode: asset.asset_code, permanentlyDeleted: true },
+  });
+  res.json({ message: 'Aset dihapus permanen.' });
 });
 
 // POST /api/assets/import — import massal Aset dari file CSV
@@ -554,186 +736,262 @@ const importAssets = asyncHandler(async (req, res) => {
     errors: [],  // { row, reason }
   };
 
-  for (let i = 0; i < rows.length; i++) {
-    const rowNum = i + 2; // +2 karena baris 1 adalah header, dan index dimulai dari 0
-    const row = rows[i];
+  /* ============================================================================
+     Referensi (lokasi, sub lokasi, kode barang, kategori aset) dan seluruh nomor
+     urut yang sudah dipakai dimuat SEKALI di sini, bukan ditanyakan ke database
+     ulang di setiap baris seperti sebelumnya — begitu juga transaksinya, satu
+     untuk seluruh berkas, bukan auto-commit per baris. Untuk impor beberapa ribu
+     baris, ini memangkas dari 10+ query per baris jadi 3 (aset + riwayat status +
+     kode QR — tidak bisa dihindari, tiap aset butuh ID-nya sendiri lebih dulu).
+     "Nomor urut kosong terkecil" khususnya tadinya query ULANG tabel assets
+     yang terus membesar di SETIAP baris; sekarang cukup dimuat sekali lalu
+     diperbarui di memori begitu satu nomor dipakai baris sebelumnya.
 
-    const locationCode = (row.location || '').trim();
-    const subLocationCode = (row.sub_location || '').trim();
-    const categoryCode = (row.category || '').trim();
-    const sequenceRaw = (row.id || '').trim();
-    const name = (row.name || '').trim();
-    const assetTypeName = (row.asset_type || '').trim();
-    const conditionRaw = (row.condition || '').trim();
-    const statusRaw = (row.status || '').trim();
-    const specDetail = (row.spec_detail || '').trim();
-    const brand = (row.brand || '').trim();
-    const model = (row.model || '').trim();
-    // Kolom opsional — hanya relevan/wajib tergantung status baris ini (lihat validasi di langkah 6b).
-    const saleValueNetRaw = (row.sale_value_net || '').trim();
-    const soldDateRaw = (row.sold_date || '').trim();
-    const soldPriceRaw = (row.sold_price || '').trim();
+     Efek sampingnya JUSTRU jadi lebih benar, bukan cuma lebih cepat: seluruh
+     impor kini satu transaksi atomik — kalau terjadi galat tak terduga di
+     tengah jalan (mis. koneksi database putus), SEMUA baris pada percobaan itu
+     dibatalkan bersih lewat ROLLBACK, bukan meninggalkan sebagian aset
+     tersimpan dan sebagian tidak seperti sebelumnya. Baris yang gagal validasi
+     (lokasi tidak ada, kolom wajib kosong, dst.) tetap dilewati dan dicatat di
+     `summary` seperti biasa — hanya galat yang benar-benar tak terduga yang
+     membatalkan seluruh berkas. */
+  const tenantId = req.user.tenant_id;
+  const conn = await pool.getConnection();
+  try {
+    /* beginTransaction() dipindah ke SINI (sebelum baca plan/hitung aset),
+       bukan cuma membungkus loop baris seperti sebelumnya -- supaya
+       SELECT ... FOR UPDATE di bawah benar-benar mengunci sepanjang
+       proses impor ini. Tanpanya, dua impor bersamaan untuk tenant yang
+       sama bisa lolos cek limit secara independen (baca hitungan yang
+       sama-sama belum termasuk punya satu sama lain) lalu keduanya commit
+       dan tembus limit paket -- celah race condition, bukan celah otorisasi. */
+    await conn.beginTransaction();
 
-    if (!locationCode || !categoryCode) {
-      summary.errors.push({ row: rowNum, reason: 'location dan category wajib diisi.' });
-      continue;
+    /* Kunci baris tenant ini -- transaksi KEDUA yang mencoba FOR UPDATE baris
+       yang sama (mis. impor lain yang berjalan bersamaan) akan menunggu di
+       sini sampai transaksi ini commit/rollback, baru membaca existingAssetCount
+       yang sudah termasuk hasil impor pertama. Ini menutup celah race ANTAR
+       IMPOR; race dengan endpoint tambah-satu-aset (checkAssetLimit di
+       planLimits.js, di luar transaksi ini) masih ada -- itu perbaikan yang
+       lebih besar (perlu penguncian serupa di sana juga), di luar skop
+       perbaikan ini. */
+    await conn.query(`SELECT id FROM tenants WHERE id = :tenantId FOR UPDATE`, { tenantId });
+
+    /* checkAssetLimit (middleware/planLimits.js) di rute ini cuma mengecek
+       SEKALI sebelum berkas ini diurai — cukup untuk endpoint tambah-satu,
+       tapi celah untuk impor massal: tenant di 199/200 bisa unggah CSV
+       ribuan baris dan tembus jauh dari batas paketnya kalau tidak dicek
+       ULANG di setiap baris di sini. */
+    const [[tenantPlanRow]] = await conn.query(`SELECT plan FROM tenants WHERE id = :tenantId`, { tenantId });
+    const planConfig = getPlan(tenantPlanRow?.plan);
+    const maxAssets = planConfig ? planConfig.maxAssets : null;
+    const [[{ count: existingAssetCount }]] = await conn.query(
+      `SELECT COUNT(*) AS count FROM assets WHERE tenant_id = :tenantId AND deleted_at IS NULL`, { tenantId }
+    );
+
+    const [locRows] = await conn.query(`SELECT id, code FROM locations WHERE tenant_id = :tenantId AND is_active = TRUE`, { tenantId });
+    const [subLocRows] = await conn.query(`SELECT id, code, location_id FROM sub_locations WHERE tenant_id = :tenantId AND is_active = TRUE`, { tenantId });
+    const [catRows] = await conn.query(`SELECT id, name, slug FROM asset_categories WHERE tenant_id = :tenantId AND is_active = TRUE`, { tenantId });
+    const [typeRows] = await conn.query(`SELECT id, name FROM asset_types WHERE tenant_id = :tenantId AND is_active = TRUE`, { tenantId });
+    const [seqRows] = await conn.query(`SELECT sequence_no FROM assets WHERE tenant_id = :tenantId AND sequence_no IS NOT NULL`, { tenantId });
+
+    const locationByCode = new Map(locRows.map((l) => [l.code, l]));
+    const subLocationByKey = new Map(subLocRows.map((s) => [`${s.location_id}::${s.code}`, s]));
+    const categoryBySlug = new Map(catRows.map((c) => [c.slug, c]));
+    const typeByName = new Map(typeRows.map((t) => [t.name, t]));
+    const usedSequences = new Set(seqRows.map((r) => r.sequence_no));
+
+    // Mengisi celah nomor terkecil dulu (sama seperti buildAssetCode), tapi hanya MAJU
+    // sepanjang satu proses impor ini — tidak pernah mundur mengecek ulang dari 1.
+    let nextAutoCandidate = 1;
+    function allocateAutoSequence() {
+      while (usedSequences.has(nextAutoCandidate)) nextAutoCandidate++;
+      const n = nextAutoCandidate;
+      usedSequences.add(n);
+      return n;
     }
 
-    // 1. Validasi lokasi & sub lokasi (sub lokasi opsional) sudah terdaftar/aktif
-    const [locRows] = await pool.query(`SELECT id, code FROM locations WHERE code = :code AND is_active = TRUE`, { code: locationCode });
-    if (!locRows[0]) {
-      summary.errors.push({ row: rowNum, reason: `Lokasi dengan kode "${locationCode}" belum terdaftar/aktif. Tambahkan dulu di menu Lokasi.` });
-      continue;
-    }
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2; // +2 karena baris 1 adalah header, dan index dimulai dari 0
+      const row = rows[i];
 
-    let subLocationRow = null;
-    if (subLocationCode) {
-      const [subRows] = await pool.query(
-        `SELECT id, code FROM sub_locations WHERE code = :code AND location_id = :locationId AND is_active = TRUE`,
-        { code: subLocationCode, locationId: locRows[0].id }
-      );
-      if (!subRows[0]) {
-        summary.errors.push({ row: rowNum, reason: `Sub lokasi dengan kode "${subLocationCode}" belum terdaftar/aktif untuk lokasi "${locationCode}". Tambahkan dulu di menu Lokasi.` });
+      const locationCode = (row.location || '').trim();
+      const subLocationCode = (row.sub_location || '').trim();
+      const categoryCode = (row.category || '').trim();
+      const sequenceRaw = (row.id || '').trim();
+      const name = (row.name || '').trim();
+      const assetTypeName = (row.asset_type || '').trim();
+      const conditionRaw = (row.condition || '').trim();
+      const statusRaw = (row.status || '').trim();
+      const specDetail = (row.spec_detail || '').trim();
+      const brand = (row.brand || '').trim();
+      const model = (row.model || '').trim();
+      // Kolom opsional — hanya relevan/wajib tergantung status baris ini (lihat validasi di langkah 6b).
+      const saleValueNetRaw = (row.sale_value_net || '').trim();
+      const soldDateRaw = (row.sold_date || '').trim();
+      const soldPriceRaw = (row.sold_price || '').trim();
+
+      if (maxAssets !== null && maxAssets !== undefined && existingAssetCount + summary.assetsCreated >= maxAssets) {
+        summary.skipped.push({
+          row: rowNum,
+          reason: `Dilewati -- paket ${planConfig.name} dibatasi ${maxAssets.toLocaleString('id-ID')} aset. Tingkatkan paket untuk mengimpor sisanya.`,
+        });
         continue;
       }
-      subLocationRow = subRows[0];
-    }
 
-    // 2. Validasi kode barang/aset sudah terdaftar/aktif
-    const [catRows] = await pool.query(`SELECT id, name, slug FROM asset_categories WHERE slug = :slug AND is_active = TRUE`, { slug: categoryCode });
-    if (!catRows[0]) {
-      summary.errors.push({ row: rowNum, reason: `Kode barang/aset "${categoryCode}" belum terdaftar/aktif. Tambahkan dulu di menu Kode Barang/Aset.` });
-      continue;
-    }
-
-    // 3. Kolom "id" (nomor urut) opsional — kalau diisi harus angka positif (keunikannya dicek oleh buildAssetCode di langkah 7)
-    if (sequenceRaw && (!Number.isInteger(Number(sequenceRaw)) || Number(sequenceRaw) <= 0)) {
-      summary.errors.push({ row: rowNum, reason: `Kolom "id" (nomor urut) "${sequenceRaw}" tidak valid, harus berupa angka positif atau dikosongkan untuk otomatis.` });
-      continue;
-    }
-
-    // 4. Validasi kategori aset (dropdown baru, terpisah dari kode barang/aset) — opsional
-    let assetTypeId = null;
-    if (assetTypeName) {
-      const [typeRows] = await pool.query(`SELECT id FROM asset_types WHERE name = :name AND is_active = TRUE`, { name: assetTypeName });
-      if (!typeRows[0]) {
-        summary.errors.push({ row: rowNum, reason: `Kategori aset "${assetTypeName}" belum terdaftar/aktif. Tambahkan dulu di menu Kategori Aset.` });
+      if (!locationCode || !categoryCode) {
+        summary.errors.push({ row: rowNum, reason: 'location dan category wajib diisi.' });
         continue;
       }
-      assetTypeId = typeRows[0].id;
-    }
 
-    // 5. Kondisi — opsional, default 'baik' kalau kosong
-    let condition = 'baik';
-    if (conditionRaw) {
-      const mapped = CONDITION_LABEL_TO_VALUE[conditionRaw.toLowerCase()];
-      if (!mapped) {
-        summary.errors.push({ row: rowNum, reason: `Kondisi "${conditionRaw}" tidak valid. Gunakan salah satu: Baik, Rusak Ringan, Rusak Berat, atau kosongkan.` });
+      // 1. Validasi lokasi & sub lokasi (sub lokasi opsional) sudah terdaftar/aktif
+      const location = locationByCode.get(locationCode);
+      if (!location) {
+        summary.errors.push({ row: rowNum, reason: `Lokasi dengan kode "${locationCode}" belum terdaftar/aktif. Tambahkan dulu di menu Lokasi.` });
         continue;
       }
-      condition = mapped;
-    }
 
-    // 6. Status — opsional, default 'idle' kalau kosong
-    let status = 'idle';
-    if (statusRaw) {
-      const mapped = VALID_STATUSES.find((s) => s === statusRaw.toLowerCase());
-      if (!mapped) {
-        summary.errors.push({ row: rowNum, reason: `Status "${statusRaw}" tidak valid. Gunakan salah satu: ${VALID_STATUSES.join(', ')}, atau kosongkan.` });
+      let subLocation = null;
+      if (subLocationCode) {
+        subLocation = subLocationByKey.get(`${location.id}::${subLocationCode}`);
+        if (!subLocation) {
+          summary.errors.push({ row: rowNum, reason: `Sub lokasi dengan kode "${subLocationCode}" belum terdaftar/aktif untuk lokasi "${locationCode}". Tambahkan dulu di menu Lokasi.` });
+          continue;
+        }
+      }
+
+      // 2. Validasi kode barang/aset sudah terdaftar/aktif
+      const category = categoryBySlug.get(categoryCode);
+      if (!category) {
+        summary.errors.push({ row: rowNum, reason: `Kode barang/aset "${categoryCode}" belum terdaftar/aktif. Tambahkan dulu di menu Kode Barang/Aset.` });
         continue;
       }
-      status = mapped;
-    }
 
-    // 6b. Kolom finansial wajib mengikuti status — sama seperti aturan di form Tambah/Edit Aset.
-    if (status === 'dijual' && !saleValueNetRaw) {
-      summary.errors.push({ row: rowNum, reason: 'Status "dijual" wajib mengisi kolom sale_value_net (harga jual/net).' });
-      continue;
-    }
-    if (status === 'terjual' && !soldPriceRaw) {
-      summary.errors.push({ row: rowNum, reason: 'Status "terjual" wajib mengisi kolom sold_price (harga aset terjual).' });
-      continue;
-    }
-    const saleValueNet = status === 'dijual' && saleValueNetRaw ? Number(saleValueNetRaw) : null;
-    const soldPrice = status === 'terjual' && soldPriceRaw ? Number(soldPriceRaw) : null;
-    const soldDate = status === 'terjual' && soldDateRaw ? soldDateRaw : null;
-    if (saleValueNetRaw && Number.isNaN(saleValueNet)) {
-      summary.errors.push({ row: rowNum, reason: `sale_value_net "${saleValueNetRaw}" harus berupa angka.` });
-      continue;
-    }
-    if (soldPriceRaw && Number.isNaN(soldPrice)) {
-      summary.errors.push({ row: rowNum, reason: `sold_price "${soldPriceRaw}" harus berupa angka.` });
-      continue;
-    }
-
-    // 7. Susun asset_code otomatis (server-side) dari lokasi + sub lokasi + kode barang + nomor urut,
-    // sama seperti alur Tambah Aset satu-satu. Nomor urut auto-generate kalau sequence_no dikosongkan,
-    // dan retry beberapa kali kalau kebetulan bentrok dengan baris/import lain yang berjalan bersamaan.
-    let assetCode, sequenceNo, insertResult;
-    let rowFailed = false;
-    for (let attempt = 1; attempt <= MAX_CODE_GENERATION_RETRIES; attempt++) {
-      try {
-        ({ assetCode, sequenceNo } = await buildAssetCode({
-          locationId: locRows[0].id,
-          subLocationId: subLocationRow?.id || null,
-          categoryId: catRows[0].id,
-          manualSequence: sequenceRaw || undefined,
-        }));
-      } catch (err) {
-        summary.errors.push({ row: rowNum, reason: err.message });
-        rowFailed = true;
-        break;
+      // 3. Kolom "id" (nomor urut) opsional — kalau diisi harus angka positif (keunikannya dicek di langkah 7)
+      if (sequenceRaw && (!Number.isInteger(Number(sequenceRaw)) || Number(sequenceRaw) <= 0)) {
+        summary.errors.push({ row: rowNum, reason: `Kolom "id" (nomor urut) "${sequenceRaw}" tidak valid, harus berupa angka positif atau dikosongkan untuk otomatis.` });
+        continue;
       }
 
+      // 4. Validasi kategori aset (dropdown baru, terpisah dari kode barang/aset) — opsional
+      let assetTypeId = null;
+      if (assetTypeName) {
+        const type = typeByName.get(assetTypeName);
+        if (!type) {
+          summary.errors.push({ row: rowNum, reason: `Kategori aset "${assetTypeName}" belum terdaftar/aktif. Tambahkan dulu di menu Kategori Aset.` });
+          continue;
+        }
+        assetTypeId = type.id;
+      }
+
+      // 5. Kondisi — opsional, default 'baik' kalau kosong
+      let condition = 'baik';
+      if (conditionRaw) {
+        const mapped = CONDITION_LABEL_TO_VALUE[conditionRaw.toLowerCase()];
+        if (!mapped) {
+          summary.errors.push({ row: rowNum, reason: `Kondisi "${conditionRaw}" tidak valid. Gunakan salah satu: Baik, Rusak Ringan, Rusak Berat, atau kosongkan.` });
+          continue;
+        }
+        condition = mapped;
+      }
+
+      // 6. Status — opsional, default 'idle' kalau kosong
+      let status = 'idle';
+      if (statusRaw) {
+        const mapped = VALID_STATUSES.find((s) => s === statusRaw.toLowerCase());
+        if (!mapped) {
+          summary.errors.push({ row: rowNum, reason: `Status "${statusRaw}" tidak valid. Gunakan salah satu: ${VALID_STATUSES.join(', ')}, atau kosongkan.` });
+          continue;
+        }
+        status = mapped;
+      }
+
+      // 6b. Kolom finansial wajib mengikuti status — sama seperti aturan di form Tambah/Edit Aset.
+      if (status === 'dijual' && !saleValueNetRaw) {
+        summary.errors.push({ row: rowNum, reason: 'Status "dijual" wajib mengisi kolom sale_value_net (harga jual/net).' });
+        continue;
+      }
+      if (status === 'terjual' && !soldPriceRaw) {
+        summary.errors.push({ row: rowNum, reason: 'Status "terjual" wajib mengisi kolom sold_price (harga aset terjual).' });
+        continue;
+      }
+      const saleValueNet = status === 'dijual' && saleValueNetRaw ? Number(saleValueNetRaw) : null;
+      const soldPrice = status === 'terjual' && soldPriceRaw ? Number(soldPriceRaw) : null;
+      const soldDate = status === 'terjual' && soldDateRaw ? soldDateRaw : null;
+      if (saleValueNetRaw && Number.isNaN(saleValueNet)) {
+        summary.errors.push({ row: rowNum, reason: `sale_value_net "${saleValueNetRaw}" harus berupa angka.` });
+        continue;
+      }
+      if (soldPriceRaw && Number.isNaN(soldPrice)) {
+        summary.errors.push({ row: rowNum, reason: `sold_price "${soldPriceRaw}" harus berupa angka.` });
+        continue;
+      }
+
+      // 7. Nomor urut + kode aset — dihitung di memori dari data yang sudah dimuat di atas,
+      // sama seperti buildAssetCode tapi tanpa query ulang. Manual: ditolak/dilewati kalau
+      // sudah dipakai. Otomatis: mengisi celah terkecil yang belum pernah dipakai.
+      let sequenceNo;
+      if (sequenceRaw) {
+        sequenceNo = parseInt(sequenceRaw, 10);
+        if (usedSequences.has(sequenceNo)) {
+          const wouldBeCode = [location.code, subLocation?.code, category.slug, String(sequenceNo).padStart(4, '0')].filter(Boolean).join('/');
+          summary.skipped.push({ row: rowNum, reason: `Kode aset "${wouldBeCode}" sudah ada, dilewati.` });
+          continue;
+        }
+        usedSequences.add(sequenceNo);
+      } else {
+        sequenceNo = allocateAutoSequence();
+      }
+      const paddedSequence = String(sequenceNo).padStart(4, '0');
+      const assetCode = [location.code, subLocation?.code, category.slug, paddedSequence].filter(Boolean).join('/');
       // Nama boleh dikosongkan di CSV — pakai default yang masih informatif, bisa dilengkapi lewat Edit Aset nanti.
-      const finalName = name || `${catRows[0].name} ${String(sequenceNo).padStart(4, '0')}`;
+      const finalName = name || `${category.name} ${paddedSequence}`;
 
+      // 8. Simpan aset. Kegagalan di sini (mis. bentrok tak terduga dengan proses
+      // lain yang menulis bersamaan) dicatat sebagai galat baris ini saja, tidak
+      // membatalkan seluruh impor — baris lain tetap lanjut diproses.
+      let insertResult;
       try {
-        [insertResult] = await pool.query(
-          `INSERT INTO assets (asset_code, sequence_no, category_id, asset_type_id, name, brand, model, spec_detail, condition_status, status, location_id, sub_location_id, sale_value_net, sold_date, sold_price, created_by, updated_by)
-           VALUES (:assetCode, :sequenceNo, :categoryId, :assetTypeId, :name, :brand, :model, :specDetail, :condition, :status, :locationId, :subLocationId, :saleValueNet, :soldDate, :soldPrice, :userId, :userId)`,
+        [insertResult] = await conn.query(
+          `INSERT INTO assets (tenant_id, asset_code, sequence_no, category_id, asset_type_id, name, brand, model, spec_detail, condition_status, status, location_id, sub_location_id, sale_value_net, sold_date, sold_price, created_by, updated_by)
+           VALUES (:tenantId, :assetCode, :sequenceNo, :categoryId, :assetTypeId, :name, :brand, :model, :specDetail, :condition, :status, :locationId, :subLocationId, :saleValueNet, :soldDate, :soldPrice, :userId, :userId)
+           RETURNING id`,
           {
-            assetCode, sequenceNo, categoryId: catRows[0].id, assetTypeId, name: finalName,
+            tenantId, assetCode, sequenceNo, categoryId: category.id, assetTypeId, name: finalName,
             brand: brand || null, model: model || null, specDetail: specDetail || null,
-            condition, status, locationId: locRows[0].id, subLocationId: subLocationRow?.id || null,
+            condition, status, locationId: location.id, subLocationId: subLocation?.id || null,
             saleValueNet, soldDate, soldPrice,
             userId: req.user.id,
           }
         );
-        break; // berhasil, keluar dari loop retry
       } catch (err) {
-        const isDuplicate = err.code === 'ER_DUP_ENTRY';
-        const hasManualInput = Boolean(sequenceRaw);
-        if (isDuplicate && hasManualInput) {
-          summary.skipped.push({ row: rowNum, reason: `Kode aset "${assetCode}" sudah ada, dilewati.` });
-          rowFailed = true;
-          break;
-        }
-        if (isDuplicate && attempt < MAX_CODE_GENERATION_RETRIES) {
-          continue; // auto-generate bentrok (jarang terjadi), coba nomor berikutnya
-        }
         summary.errors.push({ row: rowNum, reason: `Gagal menyimpan baris ini: ${err.message}` });
-        rowFailed = true;
-        break;
+        continue;
       }
+
+      const assetId = insertResult.insertId;
+
+      await conn.query(
+        `INSERT INTO asset_status_histories (asset_id, old_status, new_status, changed_by, notes)
+         VALUES (:assetId, NULL, :status, :userId, 'Aset dibuat via import CSV')`,
+        { assetId, status, userId: req.user.id }
+      );
+
+      const { code, scanUrl, imageDataUrl } = await generateAssetQr();
+      await conn.query(
+        `INSERT INTO qr_codes (asset_id, code, scan_url, image_path, generated_by) VALUES (:assetId, :code, :scanUrl, :imagePath, :userId)`,
+        { assetId, code, scanUrl, imagePath: imageDataUrl, userId: req.user.id }
+      );
+
+      summary.assetsCreated++;
     }
-    if (rowFailed) continue;
 
-    const assetId = insertResult.insertId;
-
-    await pool.query(
-      `INSERT INTO asset_status_histories (asset_id, old_status, new_status, changed_by, notes)
-       VALUES (:assetId, NULL, :status, :userId, 'Aset dibuat via import CSV')`,
-      { assetId, status, userId: req.user.id }
-    );
-
-    const { code, scanUrl, imageDataUrl } = await generateAssetQr();
-    await pool.query(
-      `INSERT INTO qr_codes (asset_id, code, scan_url, image_path, generated_by) VALUES (:assetId, :code, :scanUrl, :imagePath, :userId)`,
-      { assetId, code, scanUrl, imagePath: imageDataUrl, userId: req.user.id }
-    );
-
-    summary.assetsCreated++;
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
   }
 
   await logAudit({ userId: req.user.id, action: 'create', entityType: 'asset_import', newValues: summary });
@@ -753,7 +1011,7 @@ const importAssets = asyncHandler(async (req, res) => {
  * tetap cocok dengan format impor untuk kolom-kolom yang memang sama.
  */
 const exportAssets = asyncHandler(async (req, res) => {
-  const { whereClause, params } = buildAssetFilter(req.query);
+  const { whereClause, params } = buildAssetFilter(req.query, req.user.tenant_id);
 
   const [rows] = await pool.query(
     `SELECT a.asset_code, a.sequence_no, a.name, a.brand, a.model, a.serial_number,
@@ -801,13 +1059,6 @@ const exportAssets = asyncHandler(async (req, res) => {
 
   const asDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : '');
 
-  const toCell = (value) => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    // Bungkus dengan tanda kutip kalau mengandung pemisah, kutip, atau baris baru.
-    return /[",\r\n;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
-
   const lines = [headers.join(',')];
   for (const r of rows) {
     // Nilai buku dihitung saat ekspor supaya laporan keuangan tidak perlu
@@ -828,7 +1079,7 @@ const exportAssets = asyncHandler(async (req, res) => {
       r.sale_value_net, asDate(r.sold_date), r.sold_price,
       asDate(r.retired_date), r.retired_reason, r.retired_doc_no,
       r.notes, asDate(r.created_at),
-    ].map(toCell).join(','));
+    ].map(toCsvCell).join(','));
   }
 
   await logAudit({
@@ -852,4 +1103,7 @@ const exportAssets = asyncHandler(async (req, res) => {
   res.send(csv);
 });
 
-module.exports = { listAssets, getAsset, getAssetByCode, createAsset, updateAsset, deleteAsset, importAssets, exportAssets };
+module.exports = {
+  listAssets, getAsset, getAssetByCode, createAsset, updateAsset, deleteAsset, importAssets, exportAssets,
+  listTrash, restoreAsset, permanentDeleteAsset,
+};

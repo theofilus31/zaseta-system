@@ -106,8 +106,8 @@ const requestEmailOtp = asyncHandler(async (req, res) => {
   }
 
   const [dupe] = await pool.query(
-    `SELECT id FROM users WHERE email = :email AND id != :id AND deleted_at IS NULL`,
-    { email: newEmail, id: userId }
+    `SELECT id FROM users WHERE tenant_id = :tenantId AND email = :email AND id != :id AND deleted_at IS NULL`,
+    { tenantId: req.user.tenant_id, email: newEmail, id: userId }
   );
   if (dupe[0]) {
     return res.status(409).json({ message: 'Surel tersebut sudah dipakai pengguna lain.' });
@@ -120,12 +120,12 @@ const requestEmailOtp = asyncHandler(async (req, res) => {
   await pool.query(
     `INSERT INTO email_change_otps (user_id, new_email, otp_code, attempts, expires_at)
      VALUES (:userId, :newEmail, :otp, 0, :expiresAt)
-     ON DUPLICATE KEY UPDATE new_email = :newEmail, otp_code = :otp, attempts = 0, expires_at = :expiresAt`,
+     ON CONFLICT (user_id) DO UPDATE SET new_email = :newEmail, otp_code = :otp, attempts = 0, expires_at = :expiresAt`,
     { userId, newEmail, otp, expiresAt }
   );
 
   try {
-    await sendEmailChangeOtp({ to: newEmail, otp, expiresInMinutes: OTP_EXPIRES_MINUTES });
+    await sendEmailChangeOtp({ to: newEmail, otp, expiresInMinutes: OTP_EXPIRES_MINUTES, tenantId: req.user.tenant_id });
   } catch (err) {
     console.error('Gagal mengirim email OTP:', err.message);
     return res.status(502).json({ message: 'Gagal mengirim surel OTP. Coba lagi beberapa saat lagi.' });
@@ -166,8 +166,8 @@ const verifyEmailOtp = asyncHandler(async (req, res) => {
 
   // Cek lagi email belum dipakai user lain (race condition guard) sebelum commit.
   const [dupe] = await pool.query(
-    `SELECT id FROM users WHERE email = :email AND id != :id AND deleted_at IS NULL`,
-    { email: record.new_email, id: userId }
+    `SELECT id FROM users WHERE tenant_id = :tenantId AND email = :email AND id != :id AND deleted_at IS NULL`,
+    { tenantId: req.user.tenant_id, email: record.new_email, id: userId }
   );
   if (dupe[0]) {
     await pool.query(`DELETE FROM email_change_otps WHERE user_id = :userId`, { userId });
@@ -188,9 +188,16 @@ const verifyEmailOtp = asyncHandler(async (req, res) => {
   res.json({ message: 'Surel berhasil diperbarui.', user: updated[0] });
 });
 
-// PUT /api/profile/username — KHUSUS ADMIN
+// PUT /api/profile/username — mengganti username PENGGUNA LAIN, dijaga izin
+// menu Manajemen Pengguna (users.edit) — bukan requireRole('admin') — sama
+// seperti PUT /api/users/:id, supaya staf non-admin yang didelegasikan izin
+// ini bisa mengelola akun karyawan tanpa perlu jadi admin (lihat
+// routes/profileRoutes.js). isAdmin/role TIDAK pernah tersentuh endpoint
+// ini — itu satu-satunya bagian sensitif yang tetap dikunci ketat, lihat
+// userController.createUser/updateUser (Fase 6 pengerasan keamanan).
 const updateUsername = asyncHandler(async (req, res) => {
   const { userId, username } = req.body;
+  const tenantId = req.user.tenant_id;
 
   if (!userId || !username) {
     return res.status(400).json({ message: 'userId dan nama pengguna wajib diisi.' });
@@ -202,17 +209,24 @@ const updateUsername = asyncHandler(async (req, res) => {
     });
   }
 
+  // userId datang dari input admin — pastikan target benar-benar milik tenant ini (IDOR guard).
+  const [targetRows] = await pool.query(
+    `SELECT id FROM users WHERE id = :userId AND tenant_id = :tenantId AND deleted_at IS NULL`,
+    { userId, tenantId }
+  );
+  if (!targetRows[0]) return res.status(404).json({ message: 'User tidak ditemukan.' });
+
   const [dupe] = await pool.query(
-    `SELECT id FROM users WHERE username = :username AND id != :userId AND deleted_at IS NULL`,
-    { username, userId }
+    `SELECT id FROM users WHERE tenant_id = :tenantId AND username = :username AND id != :userId AND deleted_at IS NULL`,
+    { tenantId, username, userId }
   );
   if (dupe[0]) {
     return res.status(409).json({ message: 'Nama pengguna sudah dipakai pengguna lain.' });
   }
 
   await pool.query(
-    `UPDATE users SET username = :username WHERE id = :userId`,
-    { username, userId }
+    `UPDATE users SET username = :username WHERE id = :userId AND tenant_id = :tenantId`,
+    { username, userId, tenantId }
   );
 
   await logAudit({ userId: req.user.id, action: 'update', entityType: 'user_username', entityId: userId });

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import Layout from '../components/Layout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useBranding } from '../context/BrandingContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
+import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
@@ -96,6 +96,7 @@ function LogoSlot({ slot, url, canEdit, onUpload, onDelete, busy }) {
 }
 
 export default function SettingsPage() {
+  useLayoutWidth('narrow');
   const { can } = useAuth();
   const branding = useBranding();
   const { pushSuccess, pushError } = useNotification();
@@ -175,18 +176,18 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <Layout width="narrow">
+      <>
         <Skeleton className="h-7 w-48 mb-6" />
         <div className="space-y-5">
           <Card><Skeleton className="h-40 w-full" /></Card>
           <Card><Skeleton className="h-64 w-full" /></Card>
         </div>
-      </Layout>
+      </>
     );
   }
 
   return (
-    <Layout width="narrow">
+    <>
       <PageHeader
         eyebrow="Administrasi"
         title="Pengaturan"
@@ -215,7 +216,7 @@ export default function SettingsPage() {
             label="Nama Aplikasi" name="appName" required
             value={form.appName} onChange={handleChange}
             disabled={!canEdit}
-            placeholder="Asset Inventory"
+            placeholder="ZASETA"
             hint="Judul sistem itu sendiri. Biarkan umum bila dipakai lintas jenis aset."
           />
 
@@ -272,6 +273,6 @@ export default function SettingsPage() {
           jadi tampilannya tetap utuh meski belum ada logo sama sekali.
         </p>
       </Card>
-    </Layout>
+    </>
   );
 }

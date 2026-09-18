@@ -50,7 +50,7 @@ export default function StatCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-ink-500 truncate">{label}</p>
-          <p className={`text-[28px] leading-none font-bold mt-2 tabular-nums ${t.value}`}>{value}</p>
+          <p className={`text-[28px] leading-none font-black mt-2 tabular-nums ${t.value}`}>{value}</p>
         </div>
         {Icon && (
           <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.icon}`}>

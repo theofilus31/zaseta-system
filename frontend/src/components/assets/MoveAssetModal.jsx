@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axiosClient from '../../api/axiosClient.js';
 import Modal from '../ui/Modal.jsx';
 import Button from '../ui/Button.jsx';
-import { SelectField, FormError } from '../ui/Form.jsx';
+import { SearchableSelect, FormError } from '../ui/Form.jsx';
 
 /**
  * Memindahkan satu/beberapa aset terpilih ke Lokasi + Sub Lokasi baru.
@@ -69,25 +69,24 @@ export default function MoveAssetModal({ count, onConfirm, onClose }) {
           seperti lokasi asalnya.
         </p>
 
-        <SelectField
+        <SearchableSelect
           label="Lokasi Tujuan" required
           value={locationId}
-          onChange={(e) => { setLocationId(e.target.value); setError(''); }}
-        >
-          <option value="">Pilih lokasi…</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
-        </SelectField>
+          onChange={(v) => { setLocationId(v); setError(''); }}
+          options={locations} getOptionLabel={(l) => `${l.code} · ${l.name}`}
+          placeholder="Cari lokasi…" emptyLabel="Pilih lokasi…"
+        />
 
-        <SelectField
+        <SearchableSelect
           label="Sub Lokasi Tujuan"
           value={subLocationId}
-          onChange={(e) => setSubLocationId(e.target.value)}
+          onChange={setSubLocationId}
           disabled={!locationId}
           hint="Boleh dikosongkan kalau lokasi tujuan tidak dibagi per ruang."
-        >
-          <option value="">{locationId ? 'Tanpa sub lokasi (opsional)' : 'Pilih lokasi dahulu'}</option>
-          {subLocations.map((sl) => <option key={sl.id} value={sl.id}>{sl.code} · {sl.name}</option>)}
-        </SelectField>
+          options={subLocations} getOptionLabel={(sl) => `${sl.code} · ${sl.name}`}
+          placeholder="Cari sub lokasi…"
+          emptyLabel={locationId ? 'Tanpa sub lokasi (opsional)' : 'Pilih lokasi dahulu'}
+        />
 
         <FormError>{error}</FormError>
       </form>
