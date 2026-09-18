@@ -1,3 +1,9 @@
+/* @import WAJIB baris pertama (aturan CSS: @import harus mendahului rule
+   lain) -- variabel tema shadcn/ui (awalan sc- sengaja, lihat catatan di
+   berkas itu sendiri) dipakai komponen baru di components/ui/*.tsx, terpisah
+   total dari token brand/ink/dll. di bawah. */
+@import './styles/shadcn-theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

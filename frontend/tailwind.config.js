@@ -24,7 +24,7 @@
  * ============================================================================
  */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
@@ -119,6 +119,32 @@ export default {
           800: '#1c2534', // judul — sedikit lebih dalam dari slate biasa
           900: '#0b111c', // judul tertinggi / overlay
         },
+
+        /* ===== TOKEN SHADCN/UI (awalan sc-) =====
+           Dipakai HANYA oleh components/ui/*.tsx baru (card.tsx, button.tsx,
+           badge.tsx, avatar.tsx, line-charts-9.tsx). Diberi awalan `sc-`
+           supaya TIDAK menimpa `accent` di atas (proyek ini sudah memakai
+           nama itu untuk status "Dipindahkan") -- lihat catatan lengkap di
+           src/styles/shadcn-theme.css. */
+        'sc-background': 'var(--sc-background)',
+        'sc-foreground': 'var(--sc-foreground)',
+        'sc-card': 'var(--sc-card)',
+        'sc-card-foreground': 'var(--sc-card-foreground)',
+        'sc-popover': 'var(--sc-popover)',
+        'sc-popover-foreground': 'var(--sc-popover-foreground)',
+        'sc-primary': 'var(--sc-primary)',
+        'sc-primary-foreground': 'var(--sc-primary-foreground)',
+        'sc-secondary': 'var(--sc-secondary)',
+        'sc-secondary-foreground': 'var(--sc-secondary-foreground)',
+        'sc-muted': 'var(--sc-muted)',
+        'sc-muted-foreground': 'var(--sc-muted-foreground)',
+        'sc-accent': 'var(--sc-accent)',
+        'sc-accent-foreground': 'var(--sc-accent-foreground)',
+        'sc-destructive': 'var(--sc-destructive)',
+        'sc-destructive-foreground': 'var(--sc-destructive-foreground)',
+        'sc-border': 'var(--sc-border)',
+        'sc-input': 'var(--sc-input)',
+        'sc-ring': 'var(--sc-ring)',
       },
 
       boxShadow: {

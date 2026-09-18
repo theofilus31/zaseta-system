@@ -1,0 +1,47 @@
+/**
+ * ============================================================================
+ *  TEMA SHADCN/UI — DINAMAKAN ULANG DENGAN AWALAN `sc-` (bukan konvensi baku)
+ * ============================================================================
+ *  Tema shadcn baku memakai nama seperti --primary/--accent/--muted, TAPI
+ *  proyek ini SUDAH punya token warna sendiri dengan nama yang sama persis
+ *  (lihat tailwind.config.js: brand/info/warning/danger/ACCENT/ink) --
+ *  `accent` di proyek ini sudah dipakai untuk status "Dipindahkan" (ungu) di
+ *  banyak tempat (StatusBadge.jsx dst). Kalau token shadcn dipasang dengan
+ *  nama baku, `colors.accent` akan TERTIMPA jadi satu warna flat shadcn,
+ *  menghapus seluruh skala 50-900 yang sedang dipakai status badge itu.
+ *
+ *  Supaya kedua sistem bisa hidup berdampingan tanpa saling menimpa, SEMUA
+ *  variabel & kelas Tailwind komponen shadcn di sini diberi awalan `sc-`
+ *  (bg-sc-card, text-sc-muted-foreground, dst.) -- lihat tailwind.config.js
+ *  bagian yang sama untuk pemetaannya ke Tailwind.
+ *
+ *  Palet "neutral" bawaan shadcn/ui, TIDAK disesuaikan dengan warna brand
+ *  hijau proyek ini -- lihat catatan di GrowthChart.jsx/PlatformRevenue.jsx
+ *  kalau suatu saat komponen chart lain ingin dipadankan temanya.
+ * ============================================================================
+ */
+:root {
+  --sc-background: oklch(1 0 0);
+  --sc-foreground: oklch(0.145 0 0);
+  --sc-card: oklch(1 0 0);
+  --sc-card-foreground: oklch(0.145 0 0);
+  --sc-popover: oklch(1 0 0);
+  --sc-popover-foreground: oklch(0.145 0 0);
+  --sc-primary: oklch(0.205 0 0);
+  --sc-primary-foreground: oklch(0.985 0 0);
+  --sc-secondary: oklch(0.97 0 0);
+  --sc-secondary-foreground: oklch(0.205 0 0);
+  --sc-muted: oklch(0.97 0 0);
+  --sc-muted-foreground: oklch(0.556 0 0);
+  --sc-accent: oklch(0.97 0 0);
+  --sc-accent-foreground: oklch(0.205 0 0);
+  --sc-destructive: oklch(0.577 0.245 27.325);
+  --sc-destructive-foreground: oklch(1 0 0);
+  --sc-border: oklch(0.922 0 0);
+  --sc-input: oklch(0.922 0 0);
+  --sc-ring: oklch(0.708 0 0);
+}
+
+/* Aplikasi ini SENGAJA hanya mode terang (lihat README, tailwind.config.js
+   tidak mengaktifkan darkMode) -- tidak ada blok .dark di sini supaya
+   konsisten dengan keputusan itu, bukan lupa. */
