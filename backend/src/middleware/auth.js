@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { MODULE_BY_KEY, fullAccess } = require('../config/modules');
+const { getPlan } = require('../config/plans');
 
 /**
  * Memverifikasi JWT dari header Authorization: Bearer <token>, lalu memuat
@@ -41,7 +42,7 @@ async function authenticate(req, res, next) {
        tanpa menunggu semua tokennya kedaluwarsa satu-satu. */
     const [rows] = await pool.query(
       `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin,
-              r.name AS role, t.status AS tenant_status
+              r.name AS role, t.status AS tenant_status, t.plan
        FROM users u
        JOIN roles r ON r.id = u.role_id
        JOIN tenants t ON t.id = u.tenant_id
@@ -74,7 +75,16 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ message: 'Sesi ini sudah tidak berlaku. Silakan masuk kembali.' });
     }
 
-    req.user = { ...user, is_platform_admin: Boolean(user.is_platform_admin), permissions: await loadPermissions(user) };
+    /* planName = label siap-tampil ("Starter", dst.) untuk sidebar/topbar --
+       tenant.plan sendiri cuma slug ("starter"). Fallback ke slug apa
+       adanya untuk nilai yang bukan bagian katalog publik (mis.
+       'enterprise_custom' -- lihat catatan di migration_plans_catalog_db.sql). */
+    req.user = {
+      ...user,
+      is_platform_admin: Boolean(user.is_platform_admin),
+      planName: getPlan(user.plan)?.name || user.plan,
+      permissions: await loadPermissions(user),
+    };
     next();
   } catch (err) {
     next(err);

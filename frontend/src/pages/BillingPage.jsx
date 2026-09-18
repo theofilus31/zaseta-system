@@ -175,6 +175,31 @@ export default function BillingPage() {
     if (plan) setPicked(plan);
   }, [searchParams, data, plans, isAdmin, setSearchParams]);
 
+  /* Ucapan selamat sekali tampil begitu permintaan upgrade DISETUJUI —
+     dideteksi dari subscription aktif berbayar yang belum pernah "dirayakan"
+     di browser ini (localStorage per subscription.id, bukan jendela waktu
+     seperti "24 jam terakhir" — lebih tahan kalau tenant baru buka
+     halaman ini beberapa hari setelah disetujui). Persetujuannya sendiri
+     terjadi di sesi ADMIN PLATFORM yang beda, jadi tidak ada cara mendorong
+     notifikasi real-time ke tenant (tidak ada websocket di arsitektur ini) —
+     ini muncul begitu tenant membuka/memuat ulang halaman Langganan setelah
+     disetujui, dilengkapi surel yang sudah ada (sendUpgradeRequestResolved). */
+  const [celebration, setCelebration] = useState(null);
+  useEffect(() => {
+    if (!data?.subscription || data.subscription.status !== 'active' || !data.plan || data.plan.price === 0) return;
+    const key = `zenta_billing_celebrated_${data.subscription.id}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, '1');
+    } catch {
+      // localStorage bisa gagal (mode privat, kuota, dll.) -- kalau begitu
+      // biarkan ucapan selamatnya tampil lagi lain kali daripada melempar
+      // error yang mematahkan seluruh halaman Langganan.
+    }
+    setCelebration(data.plan.name);
+    pushSuccess(`Selamat! Paket ${data.plan.name} Anda sudah aktif.`);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleSubmitRequest(e) {
     e.preventDefault();
     setSubmitting(true);
@@ -222,6 +247,22 @@ export default function BillingPage() {
         title="Langganan"
         description="Paket, pemakaian, dan pengajuan upgrade untuk ruang kerja Anda."
       />
+
+      {celebration && (
+        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3.5">
+          <i className="fas fa-champagne-glasses mt-0.5 text-brand-500 shrink-0" aria-hidden="true" />
+          <p className="flex-1 text-sm text-brand-800 leading-relaxed">
+            <strong>Selamat!</strong> Permintaan upgrade Anda sudah disetujui — paket <strong>{celebration}</strong> aktif sekarang.
+          </p>
+          <button
+            onClick={() => setCelebration(null)}
+            aria-label="Tutup"
+            className="shrink-0 h-6 w-6 -m-1 flex items-center justify-center rounded-lg text-brand-400 hover:text-brand-700 hover:bg-brand-100 transition-colors"
+          >
+            <i className="fas fa-xmark text-xs" aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {!isAdmin && (
         <div className="mb-5 flex items-start gap-3 rounded-2xl border border-ink-200 bg-ink-50 px-4 py-3.5">

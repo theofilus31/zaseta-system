@@ -545,7 +545,7 @@ async function sendUpgradeRequestResolved({ to, planName, approved, adminNote, t
     </p>
     <p style="${FONT} margin: 0 0 24px; font-size: 14px; color: ${INK_600}; line-height: 1.6;">
       ${approved
-        ? `Paket <strong>${escapeHtml(planName)}</strong> Anda sudah aktif sekarang. Terima kasih!`
+        ? `Selamat! Paket <strong>${escapeHtml(planName)}</strong> Anda sudah aktif sekarang. Terima kasih!`
         : `Permintaan upgrade ke paket <strong>${escapeHtml(planName)}</strong> belum bisa kami setujui.`}
     </p>
 
@@ -570,7 +570,7 @@ async function sendUpgradeRequestResolved({ to, planName, approved, adminNote, t
     from: fromAddress,
     to,
     subject: `[${appName}] Upgrade ke ${planName} ${approved ? 'disetujui' : 'ditolak'}`,
-    text: `Permintaan upgrade ke paket ${planName} ${approved ? 'disetujui — paket Anda sudah aktif.' : 'belum bisa kami setujui.'}${adminNote ? `\n\nCatatan: ${adminNote}` : ''}`,
+    text: `Permintaan upgrade ke paket ${planName} ${approved ? 'disetujui — selamat, paket Anda sudah aktif.' : 'belum bisa kami setujui.'}${adminNote ? `\n\nCatatan: ${adminNote}` : ''}`,
     html: emailShell({
       preheader: `Upgrade ke ${planName} ${approved ? 'disetujui' : 'ditolak'}.`,
       eyebrow: 'Billing',

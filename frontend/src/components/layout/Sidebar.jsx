@@ -307,7 +307,18 @@ export default function Sidebar() {
             </Avatar>
             {!collapsed && (
               <span className="flex-1 min-w-0">
-                <span className="block text-[13px] font-semibold text-white truncate">{user?.name}</span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white">{user?.name}</span>
+                  {/* Paket tenant saat ini (Free/Starter/Business/Enterprise)
+                      -- lihat middleware/auth.js (planName diturunkan dari
+                      tenants.plan lewat config/plans.js), disegarkan otomatis
+                      tiap kali AuthContext memanggil /auth/me. */}
+                  {user?.planName && (
+                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-200 bg-white/10">
+                      {user.planName}
+                    </span>
+                  )}
+                </span>
                 <span className="block text-[11px] text-brand-300 truncate">
                   {accessLabel(user)}
                 </span>
