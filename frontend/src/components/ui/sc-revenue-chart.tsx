@@ -51,7 +51,7 @@ function formatRupiahFull(v: number) {
 const chartConfig = {
   value: {
     label: 'Pendapatan',
-    color: '#a855f7',
+    color: '#0b111c', // ink-900 (lihat tailwind.config.js) -- sebelumnya ungu shadcn (#a855f7)
   },
 } satisfies ChartConfig;
 
