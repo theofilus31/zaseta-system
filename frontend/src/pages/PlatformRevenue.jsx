@@ -108,7 +108,15 @@ export default function PlatformRevenue() {
             />
           </div>
 
-          <div className="mb-5">
+          {/* max-w-2xl -- GrowthChart pakai viewBox tetap (500x210) + w-full
+              h-auto, jadi tingginya SELALU ikut proporsi lebar wadahnya.
+              Di Dashboard komponen ini selalu ditaruh berdampingan (grid 2
+              kolom, lihat PlatformDashboard.jsx) sehingga lebarnya wajar;
+              di sini cuma satu chart sendirian — dibiarkan tanpa batas lebar
+              bikin tingginya ikut membengkak sampai proporsinya aneh di
+              layar lebar. Lebarnya disamakan kira-kira dengan lebar satu
+              kolom di Dashboard supaya tinggi grafiknya konsisten juga. */}
+          <div className="mb-5 max-w-2xl">
             <GrowthChart
               title="Pertumbuhan Pendapatan"
               subtitle={`Kumulatif dari invoice lunas, ${range} hari terakhir`}

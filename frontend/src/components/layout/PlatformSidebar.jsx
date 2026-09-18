@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import axiosClient from '../../api/axiosClient.js';
 import ProductBrandMark from '../ProductBrandMark.jsx';
 
 /**
@@ -33,7 +34,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/platform/tenants', label: 'Tenant', icon: 'fa-building' },
       { to: '/platform/users', label: 'Pengguna', icon: 'fa-users' },
-      { to: '/platform/billing-requests', label: 'Permintaan Upgrade', icon: 'fa-file-invoice-dollar' },
+      { to: '/platform/billing-requests', label: 'Permintaan Upgrade', icon: 'fa-file-invoice-dollar', badgeKey: 'pendingUpgrades' },
     ],
   },
   {
@@ -62,6 +63,31 @@ export const platformNavItems = NAV_GROUPS.flatMap((g) => g.items);
 export default function PlatformSidebar({ onNavigate }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  /* Badge jumlah permintaan upgrade yang MENUNGGU — dipoll tiap 30 detik
+     (interval sama seperti PlatformDashboard.jsx) supaya admin platform
+     langsung sadar ada yang perlu ditindaklanjuti tanpa harus buka menunya
+     dulu. Sidebar ini REMOUNT setiap pindah halaman platform (setiap
+     halaman platform merender <PlatformLayout> sendiri-sendiri, bukan satu
+     layout persisten via nested route), jadi query ini ikut jalan lagi tiap
+     navigasi — cukup ringan (satu query kecil, khusus admin platform) untuk
+     tidak jadi masalah nyata. Gagal diam-diam (badge cuma hiasan, bukan
+     data kritis) supaya tidak mengganggu navigasi kalau permintaannya gagal.
+     `?status=all` di badgeKey lain (kalau nanti ditambah) HARUS tetap
+     'pending' di sini — badge ini cuma berarti "butuh ditindaklanjuti". */
+  const [pendingUpgrades, setPendingUpgrades] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      axiosClient.get('/billing/upgrade-requests', { params: { status: 'pending' } })
+        .then((res) => { if (!cancelled) setPendingUpgrades(res.data.requests.length); })
+        .catch(() => {});
+    }
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+  const badgeCounts = { pendingUpgrades };
 
   function handleLogout() {
     logout();
@@ -125,6 +151,14 @@ export default function PlatformSidebar({ onNavigate }) {
                         aria-hidden="true"
                       />
                       <span className="truncate flex-1">{item.label}</span>
+                      {item.badgeKey && badgeCounts[item.badgeKey] > 0 && (
+                        <span
+                          className="shrink-0 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold text-white tabular-nums"
+                          title={`${badgeCounts[item.badgeKey]} menunggu ditindaklanjuti`}
+                        >
+                          {badgeCounts[item.badgeKey]}
+                        </span>
+                      )}
                       {item.isNew && (
                         <span className="shrink-0 text-[9px] font-extrabold tracking-wide text-brand-300 bg-brand-400/15 border border-brand-400/25 rounded px-1.5 py-0.5">
                           BARU

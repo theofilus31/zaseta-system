@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import NumberFlow from '@number-flow/react';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -77,10 +78,21 @@ function PlanCard({ plan, cycle, isCurrent, onPick, disabled }) {
         </span>
       )}
       <p className="text-[15px] font-bold text-ink-900">{plan.name}</p>
-      <p className="mt-2 text-2xl font-black text-ink-900">
-        {plan.custom ? 'Custom' : plan.price === 0 ? 'Gratis' : rupiah(displayPrice)}
-        {!plan.custom && plan.price > 0 && <span className="text-xs font-medium text-ink-400"> {isYearly ? '/tahun' : '/bulan'}</span>}
-      </p>
+      {plan.custom || plan.price === 0 ? (
+        <p className="mt-2 text-2xl font-black text-ink-900">{plan.custom ? 'Custom' : 'Gratis'}</p>
+      ) : (
+        /* NumberFlow — sama persis pola PricingCards.jsx (landing/halaman
+           Harga publik): angkanya "menggulung" digit demi digit tiap kali
+           `displayPrice` berubah (ganti Bulanan/Tahunan), bukan cuma
+           berganti angka mentah. Halaman ini sebelumnya punya PlanCard
+           SENDIRI (bukan berbagi komponen dengan PricingCards.jsx), jadi
+           animasi itu tidak ikut ke sini sampai ditambahkan manual. */
+        <p className="mt-2 inline-flex items-baseline gap-1 text-2xl font-black text-ink-900">
+          <span>Rp</span>
+          <NumberFlow value={displayPrice} locales="id-ID" format={{ maximumFractionDigits: 0 }} />
+          <span className="text-xs font-medium text-ink-400">{isYearly ? '/tahun' : '/bulan'}</span>
+        </p>
+      )}
       <p className="mt-2 text-xs text-ink-500 leading-relaxed">{plan.tagline}</p>
 
       {/* Diambil dari config/plans.js (plan.features) — satu sumber yang
@@ -361,9 +373,15 @@ export default function BillingPage() {
         <Modal
           title={`Ajukan Upgrade ke ${picked.name}`}
           description={
-            picked.price === 0
-              ? 'Paket gratis — tidak perlu transfer.'
-              : cycle === 'yearly' ? `${rupiah(picked.priceYearly)} /tahun` : `${rupiah(picked.price)} /bulan`
+            picked.price === 0 ? (
+              'Paket gratis — tidak perlu transfer.'
+            ) : (
+              <span className="inline-flex items-baseline gap-1">
+                <span>Rp</span>
+                <NumberFlow value={cycle === 'yearly' ? picked.priceYearly : picked.price} locales="id-ID" format={{ maximumFractionDigits: 0 }} />
+                <span>{cycle === 'yearly' ? '/tahun' : '/bulan'}</span>
+              </span>
+            )
           }
           icon="fa-credit-card"
           onClose={() => { setPicked(null); setError(''); }}
