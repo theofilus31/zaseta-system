@@ -67,6 +67,41 @@ const scanAsset = asyncHandler(async (req, res) => {
   res.json({ ...publicAsset, customFields: customFieldRows });
 });
 
+const CONSUMABLE_CATEGORY_LABEL = { atk: 'ATK', kebersihan: 'Kebersihan', it_supplies: 'Perlengkapan IT', lainnya: 'Lainnya' };
+
+// GET /api/public/scan-consumable/:code — TANPA AUTH. Sengaja TIDAK menyertakan
+// angka stok (current_stock/min_stock) -- siapa pun yang menemukan/memotret
+// label barcode ini tidak seharusnya bisa melihat level persediaan barang,
+// beda dari aset yang memang wajar dilihat siapa saja (identitas fisik).
+const scanConsumable = asyncHandler(async (req, res) => {
+  const { code } = req.params;
+
+  const [qrRows] = await pool.query(`SELECT consumable_id FROM consumable_qr_codes WHERE code = :code`, { code });
+  if (!qrRows[0]) {
+    return res.status(404).json({ message: 'Kode QR tidak valid atau tidak ditemukan.' });
+  }
+  const consumableId = qrRows[0].consumable_id;
+
+  const [rows] = await pool.query(
+    `SELECT c.id, c.tenant_id, c.code, c.name, c.category, c.unit, l.name AS location_name
+     FROM consumables c
+     LEFT JOIN locations l ON l.id = c.location_id
+     WHERE c.id = :consumableId AND c.is_active = TRUE`,
+    { consumableId }
+  );
+  const item = rows[0];
+  if (!item) return res.status(404).json({ message: 'Barang tidak ditemukan atau sudah tidak aktif.' });
+
+  await pool.query(`UPDATE consumable_qr_codes SET scan_count = scan_count + 1, last_scanned_at = NOW() WHERE code = :code`, { code });
+  await logAudit({ userId: null, tenantId: item.tenant_id, action: 'scan', entityType: 'consumable', entityId: consumableId, ipAddress: req.ip });
+
+  res.json({
+    code: item.code, name: item.name, unit: item.unit,
+    categoryLabel: CONSUMABLE_CATEGORY_LABEL[item.category] || item.category,
+    locationName: item.location_name,
+  });
+});
+
 // GET /api/public/categories — dropdown "Kode Barang/Aset" di form permintaan publik.
 // Hanya id + nama, TANPA AUTH: tidak ada apa pun di sini yang rahasia.
 const listPublicCategories = asyncHandler(async (req, res) => {
@@ -217,4 +252,4 @@ const resolveUsernameTenant = asyncHandler(async (req, res) => {
   res.json({ slug: rows.length === 1 ? rows[0].slug : null });
 });
 
-module.exports = { scanAsset, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant };
+module.exports = { scanAsset, scanConsumable, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant };

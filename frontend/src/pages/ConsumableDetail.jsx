@@ -120,6 +120,9 @@ export default function ConsumableDetail() {
         description={<Badge tone="neutral" size="sm">{CATEGORY_LABEL[item.category]}</Badge>}
         actions={
           <>
+            <Button to={`/consumables/${id}/qr`} variant="secondary" size="sm">
+              <i className="fas fa-qrcode text-xs" aria-hidden="true" /> Cetak Barcode
+            </Button>
             {canEdit && (
               <Button variant="secondary" size="sm" onClick={() => setShowEdit(true)}>
                 <i className="fas fa-pen text-xs" aria-hidden="true" /> Ubah
@@ -274,7 +277,9 @@ export default function ConsumableDetail() {
 
 /* -------------------------------------------------------------------------- */
 
-function StockInModal({ item, onClose, onDone }) {
+/* Diekspor -- dipakai ulang oleh ConsumableScanActionPanel.jsx (aksi cepat
+   setelah pindai barcode barang), bukan cuma dari halaman ini. */
+export function StockInModal({ item, onClose, onDone }) {
   const [form, setForm] = useState({ quantity: '', vendor: '', unitPrice: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -318,7 +323,7 @@ function StockInModal({ item, onClose, onDone }) {
   );
 }
 
-function StockOutModal({ item, onClose, onDone }) {
+export function StockOutModal({ item, onClose, onDone }) {
   const [form, setForm] = useState({ quantity: '', requestedBy: '', department: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

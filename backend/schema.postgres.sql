@@ -633,6 +633,26 @@ CREATE TABLE consumable_transactions (
 );
 CREATE INDEX idx_consumable_txn_item ON consumable_transactions(consumable_id, created_at);
 
+-- Kode QR/barcode barang habis pakai — struktur identik dengan qr_codes
+-- (bagian 14) tapi tabel terpisah, BUKAN kolom nullable tambahan di
+-- qr_codes: satu tabel qr_codes yang harus menampung dua jenis entitas
+-- (asset_id ATAU consumable_id, salah satu NULL) akan memaksa constraint
+-- UNIQUE-nya jadi rumit dan berisiko meregresi alur pindai aset yang sudah
+-- lama berjalan. Dipindai lewat /scan-consumable/:code (beda dari
+-- /scan/:code aset), lihat consumableQrController.js & publicController.js.
+CREATE TABLE consumable_qr_codes (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    consumable_id   BIGINT NOT NULL UNIQUE REFERENCES consumables(id) ON DELETE CASCADE,
+    code            VARCHAR(100) NOT NULL UNIQUE,
+    image_path      TEXT NULL,
+    scan_url        VARCHAR(255) NOT NULL,
+    generated_by    BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+    generated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_scanned_at TIMESTAMP NULL,
+    scan_count      INT NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_consumable_qr_code ON consumable_qr_codes(code);
+
 -- =====================================================================
 -- 23. ASSET REQUESTS
 -- =====================================================================

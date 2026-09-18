@@ -101,6 +101,33 @@ const getConsumable = asyncHandler(async (req, res) => {
   res.json(toItem(rows[0]));
 });
 
+/**
+ * GET /api/consumables/by-code/:code
+ *
+ * Menukar token Kode QR/barcode barang habis pakai dengan detail barangnya —
+ * sama perannya dengan assetController.getAssetByCode, supaya hasil pindai
+ * petugas bisa langsung ditindaklanjuti (Stok Masuk/Keluar) alih-alih cuma
+ * dibaca. Sengaja TIDAK menaikkan scan_count di sini (lihat alasannya di
+ * getAssetByCode) -- itu tanggung jawab publicController.scanConsumable.
+ */
+const getConsumableByCode = asyncHandler(async (req, res) => {
+  const { code } = req.params;
+  const tenantId = req.user.tenant_id;
+
+  const [qrRows] = await pool.query(
+    `SELECT q.consumable_id FROM consumable_qr_codes q
+     JOIN consumables c ON c.id = q.consumable_id
+     WHERE q.code = :code AND c.tenant_id = :tenantId LIMIT 1`,
+    { code, tenantId }
+  );
+  if (!qrRows[0]) return res.status(404).json({ message: 'Kode QR tidak dikenali.' });
+
+  const [rows] = await pool.query(`${SELECT_ITEM} WHERE c.id = :id AND c.tenant_id = :tenantId`, { id: qrRows[0].consumable_id, tenantId });
+  if (!rows[0]) return res.status(404).json({ message: 'Barang untuk Kode QR ini sudah dinonaktifkan.' });
+
+  res.json(toItem(rows[0]));
+});
+
 // POST /api/consumables
 const createConsumable = asyncHandler(async (req, res) => {
   const { name, category = 'lainnya', unit = 'pcs', minStock = 0, locationId, notes } = req.body;
@@ -399,6 +426,6 @@ const adjustStock = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  CATEGORY_LABEL, listConsumables, getConsumable, createConsumable, updateConsumable, deleteConsumable,
+  CATEGORY_LABEL, listConsumables, getConsumable, getConsumableByCode, createConsumable, updateConsumable, deleteConsumable,
   listTransactions, stockIn, stockOut, adjustStock,
 };

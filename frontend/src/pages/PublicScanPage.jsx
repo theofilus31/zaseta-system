@@ -14,8 +14,10 @@ import AssetTrackerCard from '../components/ui/AssetTrackerCard.jsx';
  * enak dibaca di layar ponsel.
  */
 
-/** Kerangka bersama untuk semua keadaan (memuat, galat, berhasil). */
-function ScanShell({ children }) {
+/** Kerangka bersama untuk semua keadaan (memuat, galat, berhasil). Diekspor
+    supaya ConsumablePublicScanPage.jsx (pindai barcode barang habis pakai)
+    ikut memakai kop/gaya yang sama persis, bukan duplikat. */
+export function ScanShell({ children }) {
   const { companyName } = useBranding();
 
   return (

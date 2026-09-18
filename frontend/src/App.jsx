@@ -31,11 +31,13 @@ import StockOpnameDetail from './pages/StockOpnameDetail.jsx';
 import BastPrintPage from './pages/BastPrintPage.jsx';
 import ConsumableList from './pages/ConsumableList.jsx';
 import ConsumableDetail from './pages/ConsumableDetail.jsx';
+import ConsumableQRPrintPage from './pages/ConsumableQRPrintPage.jsx';
 import RequestList from './pages/RequestList.jsx';
 import RequestDetail from './pages/RequestDetail.jsx';
 import DepreciationReportPage from './pages/DepreciationReportPage.jsx';
 import ZecodePage from './pages/ZecodePage.jsx';
 import PublicScanPage from './pages/PublicScanPage.jsx';
+import ConsumablePublicScanPage from './pages/ConsumablePublicScanPage.jsx';
 import PublicRequestPage from './pages/PublicRequestPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
 import InvoicePrintPage from './pages/InvoicePrintPage.jsx';
@@ -84,6 +86,10 @@ export default function App() {
     <Routes>
       {/* Publik — tidak butuh login, ini yang diakses saat client scan QR */}
       <Route path="/scan/:code" element={<PublicScanPage />} />
+
+      {/* Pindai barcode barang habis pakai — rute publik terpisah dari
+          /scan/:code aset (lihat catatan di migration_consumable_qr.sql). */}
+      <Route path="/scan-consumable/:code" element={<ConsumablePublicScanPage />} />
 
       {/* Publik — halaman harga, ditautkan dari NavBar/Footer LandingPage */}
       <Route path="/harga" element={<PricingPage />} />
@@ -138,6 +144,7 @@ export default function App() {
 
         <Route path="/consumables" element={<ProtectedRoute module="consumables"><ConsumableList /></ProtectedRoute>} />
         <Route path="/consumables/:id" element={<ProtectedRoute module="consumables"><ConsumableDetail /></ProtectedRoute>} />
+        <Route path="/consumables/:id/qr" element={<ProtectedRoute module="consumables"><ConsumableQRPrintPage /></ProtectedRoute>} />
 
         <Route path="/requests" element={<ProtectedRoute module="requests"><RequestList /></ProtectedRoute>} />
         <Route path="/requests/:id" element={<ProtectedRoute module="requests"><RequestDetail /></ProtectedRoute>} />

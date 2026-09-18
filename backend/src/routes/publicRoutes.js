@@ -1,11 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { scanAsset, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant } = require('../controllers/publicController');
+const { scanAsset, scanConsumable, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant } = require('../controllers/publicController');
 const { getPublicBranding, getLogo } = require('../controllers/settingsController');
 const { publicReadLimiter, publicWriteLimiter, enumerationLimiter } = require('../middleware/publicLimiter');
 
 // Tidak ada middleware authenticate — seluruh rute di berkas ini bersifat publik.
 router.get('/scan/:code', publicReadLimiter, scanAsset);
+
+/* Pindai QR/barcode barang habis pakai — rute terpisah dari /scan/:code
+   aset di atas (lihat catatan di migration_consumable_qr.sql). */
+router.get('/scan-consumable/:code', publicReadLimiter, scanConsumable);
 
 /* Halaman pengajuan permintaan aset publik — link khusus yang dibagikan GA ke
    karyawan tanpa akun aplikasi, supaya mereka bisa mengajukan kebutuhan aset
