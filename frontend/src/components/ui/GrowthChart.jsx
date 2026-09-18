@@ -216,7 +216,13 @@ export default function GrowthChart({ title, subtitle, data, color, tintClass, u
             width={PLOT_X1 - PLOT_X0}
             height={PLOT_Y1 - PLOT_Y0}
             fill="transparent"
-            style={{ cursor: 'crosshair' }}
+            /* outline: 'none' -- tanpa ini browser menggambar kotak fokus
+               bawaan (solid, biasanya hitam/biru) mengelilingi SELURUH area
+               plot begitu elemen ini fokus/di-tab ke. Sudah ada indikator
+               fokus sendiri di sini (rect putus-putus warna brand + garis
+               crosshair, lihat blok hoverIdx di atas), jadi kotak bawaan itu
+               cuma dobel dan terlihat seperti elemen error/nyasar. */
+            style={{ cursor: 'crosshair', outline: 'none' }}
             tabIndex={0}
             role="slider"
             aria-label={`${title}, telusuri per hari`}
