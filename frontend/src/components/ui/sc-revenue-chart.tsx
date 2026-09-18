@@ -93,6 +93,7 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
   const isUp = deltaPct >= 0;
   const highValue = points.length ? Math.max(...points.map((p) => p.value)) : 0;
   const lowValue = points.length ? Math.min(...points.map((p) => p.value)) : 0;
+  const isFlatZero = highValue === 0 && lowValue === 0;
   const firstDate = points[0]?.date;
   const lastDate = points[points.length - 1]?.date;
 
@@ -169,12 +170,15 @@ export default function RevenueChart({ data, totalRevenue, rangeLabel }: Revenue
                 tickMargin={10}
                 width={72}
                 /* Belum ada pendapatan sama sekali (tenant baru/DB baru direset)
-                   -- highValue 0 bikin recharts otomatis menghasilkan skala
-                   0..4 yang tidak berarti apa-apa (bukan pecahan Rupiah
-                   sungguhan). Dipaksa 0..10 di kondisi ini, meniru pola
-                   niceMax(0)=10 yang sudah dipakai GrowthChart.jsx untuk
-                   kasus data nol yang sama. */
-                domain={highValue > 0 ? undefined : [0, 10]}
+                   -- domain [0,0] default recharts membuatnya menghasilkan
+                   tick 0/3/6/10 yang, gara-gara diberi awalan "Rp" oleh
+                   tickFormatter, terlihat seperti pendapatan sungguhan
+                   Rp 3/Rp 6 (padahal cuma angka skala kosong, bukan Rupiah).
+                   Domain dipaksa [0,10] TAPI cuma satu tick (0) yang
+                   ditampilkan, supaya sumbu-Y kondisi kosong jujur menunjukkan
+                   "Rp 0" saja, bukan angka yang menyesatkan. */
+                domain={isFlatZero ? [0, 10] : undefined}
+                ticks={isFlatZero ? [0] : undefined}
               />
 
               <ChartTooltip
