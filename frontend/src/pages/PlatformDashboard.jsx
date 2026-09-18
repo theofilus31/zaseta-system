@@ -8,6 +8,7 @@ import Card, { CardHeader } from '../components/ui/Card.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 import GrowthChart from '../components/ui/GrowthChart.jsx';
+import { ICON_STROKE, IconWallet, IconBuilding, IconPulse } from '../components/ui/icons.jsx';
 
 /**
  * ============================================================================
@@ -30,16 +31,13 @@ import GrowthChart from '../components/ui/GrowthChart.jsx';
 const angka = (v) => Number(v).toLocaleString('id-ID');
 const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 
-/* Ikon 4 StatCard di bawah — pola sama seperti Dashboard.jsx tenant
-   (IconBox/IconWallet/dst.): svg inline dengan style stroke bersama, bukan
-   ikon Font Awesome, supaya konsisten dengan kartu KPI tenant yang jadi
-   acuan (lihat catatan desain sebelumnya: StatCard di sini sempat polos
-   tanpa ikon, beda dari tenant). */
-const s = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
-const IconUsers = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
-const IconBuilding = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><rect x="4" y="2" width="16" height="20" rx="1" /><path d="M9 22v-4h6v4M9 6h.01M9 10h.01M9 14h.01M15 6h.01M15 10h.01M15 14h.01" /></svg>;
-const IconPulse = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>;
-const IconWallet = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5" /><circle cx="16" cy="13" r="1.5" /></svg>;
+/* Ikon 4 StatCard di bawah — pola sama seperti Dashboard.jsx tenant: svg
+   inline dengan style stroke bersama, bukan ikon Font Awesome, supaya
+   konsisten dengan kartu KPI tenant yang jadi acuan (lihat catatan desain
+   sebelumnya: StatCard di sini sempat polos tanpa ikon, beda dari tenant).
+   IconWallet/IconBuilding/IconPulse dipakai lebih dari satu halaman, lihat
+   components/ui/icons.jsx. */
+const IconUsers = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
 
 const PLAN_LABELS = {
   free: 'Free',

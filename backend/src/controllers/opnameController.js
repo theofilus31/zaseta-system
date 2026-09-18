@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { toCsvCell } = require('../utils/csv');
+const { clampPagination } = require('../utils/pagination');
 
 /**
  * ============================================================================
@@ -65,8 +66,9 @@ const toSummary = (row) => ({
 // GET /api/opnames?status=&page=&limit=
 // ---------------------------------------------------------------------------
 const listOpnames = asyncHandler(async (req, res) => {
-  const { status = '', page = 1, limit = 20 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
+  const { status = '' } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 20 });
+  const offset = (page - 1) * limit;
 
   const conditions = ['o.tenant_id = :tenantId'];
   const params = { tenantId: req.user.tenant_id };

@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { todayLocal } = require('../utils/dateLocal');
+const { clampPagination } = require('../utils/pagination');
 
 /**
  * ============================================================================
@@ -36,8 +37,9 @@ async function findActiveAssignment(assetId) {
 
 // GET /api/assignments?assetId=&holder=&activeOnly=&page=&limit=
 const listAssignments = asyncHandler(async (req, res) => {
-  const { assetId, holder = '', activeOnly, page = 1, limit = 25 } = req.query;
-  const offset = (Number(page) - 1) * Number(limit);
+  const { assetId, holder = '', activeOnly } = req.query;
+  const { page, limit } = clampPagination(req.query, { defaultLimit: 25 });
+  const offset = (page - 1) * limit;
 
   const conditions = ['a.deleted_at IS NULL', 'a.tenant_id = :tenantId'];
   const params = { tenantId: req.user.tenant_id };

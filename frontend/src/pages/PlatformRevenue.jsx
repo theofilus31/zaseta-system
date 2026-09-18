@@ -10,6 +10,7 @@ import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import RevenueChart from '../components/ui/sc-revenue-chart.tsx';
+import { ICON_STROKE, IconWallet, IconBuilding } from '../components/ui/icons.jsx';
 
 /**
  * ============================================================================
@@ -31,11 +32,8 @@ import RevenueChart from '../components/ui/sc-revenue-chart.tsx';
 const angka = (v) => Number(v).toLocaleString('id-ID');
 const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 
-const s = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' };
-const IconWallet = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5" /><circle cx="16" cy="13" r="1.5" /></svg>;
-const IconCoins = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><circle cx="9" cy="9" r="6" /><path d="M14.5 9.5a6 6 0 1 0-6 6" /><circle cx="15" cy="15" r="6" /></svg>;
-const IconBuilding = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><rect x="4" y="2" width="16" height="20" rx="1" /><path d="M9 22v-4h6v4M9 6h.01M9 10h.01M9 14h.01M15 6h.01M15 10h.01M15 14h.01" /></svg>;
-const IconTrend = (p) => <svg {...p} viewBox="0 0 24 24" {...s}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>;
+const IconCoins = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><circle cx="9" cy="9" r="6" /><path d="M14.5 9.5a6 6 0 1 0-6 6" /><circle cx="15" cy="15" r="6" /></svg>;
+const IconTrend = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>;
 
 const RANGE_OPTIONS = [
   { value: 7, label: '7 Hari' },
