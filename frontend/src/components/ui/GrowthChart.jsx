@@ -60,7 +60,14 @@ export default function GrowthChart({ title, subtitle, data, color, tintClass, u
     if (points.length === 0) return null;
 
     const days = points.length - 1;
-    const rawMax = Math.max(...points.map((p) => p.value), 1);
+    /* Lantai aman di 0, BUKAN 1 — dulu dipaksa minimal 1 supaya Math.max()
+       tidak pernah dapat -Infinity, tapi itu juga memaksa niceMax(1)
+       dipanggil setiap kali datanya benar-benar nol semua (mis. tenant baru
+       belum ada tagihan sama sekali). niceMax(1) menghasilkan maxY=1, dan
+       gridline tengahnya (0,5) dibulatkan JADI "1" JUGA — sumbu-Y jadi
+       menampilkan "1" dua kali. niceMax(0) sudah punya jalur khusus
+       (kembalikan 10) yang justru menghindari tabrakan pembulatan ini. */
+    const rawMax = Math.max(...points.map((p) => p.value), 0);
     const maxY = niceMax(rawMax);
 
     const xFor = (i) => PLOT_X0 + (days === 0 ? 0 : (i / days) * (PLOT_X1 - PLOT_X0));
