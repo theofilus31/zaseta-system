@@ -15,7 +15,14 @@ import Card from './Card.jsx';
  */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-const PLOT_X0 = 40;
+/* PLOT_X0 diberi ruang lebih lapang dari sekadar cukup untuk label jumlah
+   pengguna/tenant (biasanya cuma 1-3 digit) — begitu komponen ini dipakai
+   untuk nilai Rupiah (lihat PlatformRevenue.jsx), label sumbu-Y-nya bisa
+   sepanjang "5.990.000". Dengan PLOT_X0 sekadar 40, label sebesar itu
+   tumpang tindih sampai ke luar viewBox (kepotong di tepi kiri, angka
+   pertamanya hilang) karena `textAnchor="end"` menggambar teksnya MELEBAR
+   KE KIRI dari x = PLOT_X0 - 6. */
+const PLOT_X0 = 66;
 const PLOT_X1 = 480;
 const PLOT_Y0 = 16;
 const PLOT_Y1 = 176;
@@ -168,7 +175,10 @@ export default function GrowthChart({ title, subtitle, data, color, tintClass, u
             <path d={chart.areaPath} fill={color} fillOpacity="0.1" stroke="none" />
             <path d={chart.linePath} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <circle cx={chart.endX} cy={chart.endY} r="5" fill={color} stroke="#ffffff" strokeWidth="2" />
-            <text x={chart.endX - 10} y={chart.endY - 12} textAnchor="end" fontSize="12" fontWeight="700" fill="#1c2534">
+            {/* Dikunci minimal y=14 -- titik terakhir yang nilainya dekat
+                puncak sumbu-Y (endY mendekati PLOT_Y0) sebelumnya membuat
+                label ini terdorong ke atas sampai kepotong tepi SVG. */}
+            <text x={chart.endX - 10} y={Math.max(chart.endY - 12, 14)} textAnchor="end" fontSize="12" fontWeight="700" fill="#1c2534">
               {Math.round(chart.last).toLocaleString('id-ID')}
             </text>
 
