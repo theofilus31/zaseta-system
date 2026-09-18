@@ -1,15 +1,25 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('./helpers/teardown');
-const { PLANS, PLAN_BY_ID, getPlan, isUpgrade, tierIndex } = require('../src/config/plans');
+require('./helpers/setup');
+const { getAllPlans, getPlan, isUpgrade, tierIndex } = require('../src/config/plans');
+
+/**
+ * Katalog paket sekarang dibaca dari tabel `plans` (lihat
+ * migration_plans_catalog_db.sql), bukan array statis — test ini menguji
+ * ISI seed default-nya (persis nilai yang dulu hardcode di config/plans.js),
+ * bukan lagi struktur bahasa JS-nya. Kalau seed default di migrasi diubah,
+ * test ini yang harus ikut diperbarui, bukan sebaliknya.
+ */
 
 test('katalog paket berisi tepat 4 paket (Free/Starter/Business/Enterprise)', () => {
-  assert.equal(PLANS.length, 4);
-  assert.deepEqual(PLANS.map((p) => p.id), ['free', 'starter', 'business', 'enterprise']);
+  const plans = getAllPlans();
+  assert.equal(plans.length, 4);
+  assert.deepEqual(plans.map((p) => p.id), ['free', 'starter', 'business', 'enterprise']);
 });
 
 test('harga tahunan = harga bulanan x 10 (hemat ~16,7%) untuk paket berbayar', () => {
-  for (const plan of PLANS) {
+  for (const plan of getAllPlans()) {
     if (plan.price > 0) {
       assert.equal(plan.priceYearly, plan.price * 10, `${plan.id}: priceYearly harus price x 10`);
     }
@@ -24,7 +34,7 @@ test('Free gratis dan tidak butuh pembayaran', () => {
 
 test('limit sesuai spesifikasi', () => {
   assert.deepEqual(
-    PLANS.map((p) => ({ id: p.id, maxAssets: p.maxAssets, maxUsers: p.maxUsers })),
+    getAllPlans().map((p) => ({ id: p.id, maxAssets: p.maxAssets, maxUsers: p.maxUsers })),
     [
       { id: 'free', maxAssets: 100, maxUsers: 2 },
       { id: 'starter', maxAssets: 1000, maxUsers: 5 },
@@ -32,12 +42,12 @@ test('limit sesuai spesifikasi', () => {
       { id: 'enterprise', maxAssets: 20000, maxUsers: 50 },
     ]
   );
-  assert.equal(PLAN_BY_ID.free.locationLimit, 1);
-  assert.equal(PLAN_BY_ID.starter.locationLimit, null);
+  assert.equal(getPlan('free').locationLimit, 1);
+  assert.equal(getPlan('starter').locationLimit, null);
 });
 
 test('setiap paket punya daftar fitur sendiri (bukan hardcode di tempat lain)', () => {
-  for (const plan of PLANS) {
+  for (const plan of getAllPlans()) {
     assert.ok(Array.isArray(plan.features) && plan.features.length > 0, `${plan.id} harus punya features`);
   }
 });
@@ -52,7 +62,7 @@ test('isUpgrade() membedakan naik vs turun/sama tingkat berdasar urutan tingkata
   assert.equal(isUpgrade('unknown', 'business'), false); // paket tak dikenal — jangan pernah true
 });
 
-test('tierIndex() naik monoton mengikuti urutan katalog', () => {
+test('tierIndex() naik monoton mengikuti urutan katalog (kolom sort_order)', () => {
   assert.equal(tierIndex('free'), 0);
   assert.equal(tierIndex('starter'), 1);
   assert.equal(tierIndex('business'), 2);

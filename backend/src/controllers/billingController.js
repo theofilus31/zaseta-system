@@ -1,8 +1,8 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
-const { PLANS, PLAN_BY_ID, SELF_SERVE_PLAN_IDS, getPlan, isUpgrade } = require('../config/plans');
-const { activateSubscription, cancelActiveSubscription } = require('../services/subscriptionService');
+const { getAllPlans, getPlan, getSelfServePlanIds, isUpgrade } = require('../config/plans');
+const { activateSubscription, cancelActiveSubscription, priceFor } = require('../services/subscriptionService');
 const { sendUpgradeRequestNotification, sendUpgradeRequestResolved } = require('../utils/mailer');
 
 /**
@@ -54,8 +54,11 @@ function usageExceedingPlan(usage, plan) {
 }
 
 // GET /api/billing/plans — publik, tanpa auth (dipakai halaman Harga & Landing)
+// Hanya paket AKTIF (lihat config/plans.js) — paket yang sudah dipensiunkan
+// admin platform tidak boleh muncul di sini, walau tenant lama masih boleh
+// memakainya (lihat getPlan() di getMyBilling di bawah).
 const getPlans = asyncHandler(async (req, res) => {
-  res.json({ plans: PLANS });
+  res.json({ plans: getAllPlans() });
 });
 
 /**
@@ -71,11 +74,15 @@ const getMyBilling = asyncHandler(async (req, res) => {
     `SELECT plan, plan_expires_at, billing_cycle, status FROM tenants WHERE id = :tenantId`,
     { tenantId }
   );
-  const plan = getPlan(tenantRow.plan) || PLAN_BY_ID.free;
+  const plan = getPlan(tenantRow.plan) || getPlan('free');
   const usage = await currentUsage(tenantId);
 
+  // `price`/`currency` = harga yang DIKUNCI saat pengajuan (lihat
+  // createUpgradeRequest) — ditampilkan apa adanya di sini supaya tenant
+  // tahu persis angka yang akan ditagihkan, walau katalog sempat berubah
+  // sesudahnya sebelum admin sempat menyetujui.
   const [pendingRows] = await pool.query(
-    `SELECT id, requested_plan AS "requestedPlan", billing_cycle AS "billingCycle", note, created_at AS "createdAt"
+    `SELECT id, requested_plan AS "requestedPlan", billing_cycle AS "billingCycle", price, currency, note, created_at AS "createdAt"
      FROM plan_upgrade_requests WHERE tenant_id = :tenantId AND status = 'pending'
      ORDER BY created_at DESC LIMIT 1`,
     { tenantId }
@@ -146,7 +153,7 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
   const billingCycle = req.body.billingCycle === 'yearly' ? 'yearly' : 'monthly';
   const tenantId = req.user.tenant_id;
 
-  if (!SELF_SERVE_PLAN_IDS.includes(requestedPlan)) {
+  if (!getSelfServePlanIds().includes(requestedPlan)) {
     return res.status(400).json({ message: 'Paket yang diajukan tidak valid.' });
   }
 
@@ -165,6 +172,12 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
 
   const requestedPlanConfig = getPlan(requestedPlan);
   const finalCycle = requestedPlanConfig?.price ? billingCycle : 'monthly';
+  // Dikunci DI SINI, bukan dihitung ulang saat admin menyetujui — lihat
+  // catatan panjang di subscriptionService.activateSubscription soal
+  // priceOverride. Tanpa ini, admin mengubah harga paket lewat menu Katalog
+  // Paket SELAGI permintaan ini menunggu akan diam-diam mengubah jumlah yang
+  // ditagihkan ke tenant, padahal dia mengajukan berdasarkan harga di sini.
+  const lockedPrice = priceFor(requestedPlanConfig, finalCycle);
 
   // Peringatan downgrade (rule "soft limit") — TIDAK memblokir pengajuan,
   // cuma memberi tahu tenant di muka bahwa datanya akan tetap aman tapi
@@ -186,15 +199,15 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
        tenants.plan saat riwayat dibaca nanti — begitu permintaan ini
        disetujui, tenants.plan berubah, dan tanpa snapshot ini riwayat akan
        terlihat seolah tenant "upgrade dari paket barunya sendiri". */
-    `INSERT INTO plan_upgrade_requests (tenant_id, requested_plan, previous_plan, billing_cycle, note, requested_by)
-     VALUES (:tenantId, :requestedPlan, :previousPlan, :billingCycle, :note, :requestedBy)
+    `INSERT INTO plan_upgrade_requests (tenant_id, requested_plan, previous_plan, billing_cycle, price, note, requested_by)
+     VALUES (:tenantId, :requestedPlan, :previousPlan, :billingCycle, :price, :note, :requestedBy)
      RETURNING id`,
-    { tenantId, requestedPlan, previousPlan: tenantRow.plan, billingCycle: finalCycle, note: trimmedNote, requestedBy: req.user.id }
+    { tenantId, requestedPlan, previousPlan: tenantRow.plan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote, requestedBy: req.user.id }
   );
 
   await logAudit({
     userId: req.user.id, action: 'create', entityType: 'plan_upgrade_request', entityId: result.insertId,
-    newValues: { requestedPlan, billingCycle: finalCycle, note: trimmedNote },
+    newValues: { requestedPlan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote },
   });
 
   // Surel ke admin platform bersifat best-effort — kegagalan kirim tidak boleh
@@ -219,7 +232,7 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
     console.error('Gagal mengirim surel notifikasi permintaan upgrade:', err.message);
   }
 
-  res.status(201).json({ id: result.insertId, requestedPlan, billingCycle: finalCycle, note: trimmedNote, status: 'pending', downgradeWarning });
+  res.status(201).json({ id: result.insertId, requestedPlan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote, status: 'pending', downgradeWarning });
 });
 
 /**
@@ -259,7 +272,8 @@ const listUpgradeRequests = asyncHandler(async (req, res) => {
   const statusFilter = req.query.status === 'all' ? null : (req.query.status || 'pending');
 
   const [rows] = await pool.query(
-    `SELECT r.id, r.requested_plan AS "requestedPlan", r.previous_plan AS "previousPlan", r.billing_cycle AS "billingCycle", r.note, r.status, r.admin_note AS "adminNote",
+    `SELECT r.id, r.requested_plan AS "requestedPlan", r.previous_plan AS "previousPlan", r.billing_cycle AS "billingCycle",
+            r.price, r.currency, r.note, r.status, r.admin_note AS "adminNote",
             r.created_at AS "createdAt", r.reviewed_at AS "reviewedAt",
             t.id AS "tenantId", t.company_name AS "tenantName",
             u.name AS "requesterName", u.email AS "requesterEmail"
@@ -315,6 +329,11 @@ function resolveUpgradeRequest(approve) {
         billingCycle: request.billing_cycle,
         createdBy: req.user.id,
         provider: 'manual',
+        // Harga yang DIKUNCI saat tenant mengajukan (lihat createUpgradeRequest)
+        // -- request.price bisa NULL untuk permintaan lama dari sebelum kolom
+        // ini ada, activateSubscription() fallback ke harga katalog saat ini
+        // untuk kasus itu saja (lihat catatannya di subscriptionService.js).
+        priceOverride: request.price,
       });
     }
 

@@ -39,7 +39,9 @@ import PlatformBillingRequests from './pages/PlatformBillingRequests.jsx';
 import PlatformDashboard from './pages/PlatformDashboard.jsx';
 import PlatformTenants from './pages/PlatformTenants.jsx';
 import PlatformAdmins from './pages/PlatformAdmins.jsx';
-import PlatformComingSoon from './pages/PlatformComingSoon.jsx';
+import PlatformRevenue from './pages/PlatformRevenue.jsx';
+import PlatformPlans from './pages/PlatformPlans.jsx';
+import PlatformActivity from './pages/PlatformActivity.jsx';
 import PlatformAccount from './pages/PlatformAccount.jsx';
 import PlatformUsers from './pages/PlatformUsers.jsx';
 import PlatformAuditLog from './pages/PlatformAuditLog.jsx';
@@ -158,13 +160,9 @@ export default function App() {
       <Route path="/platform/account" element={<ProtectedRoute platform><PlatformAccount /></ProtectedRoute>} />
       <Route path="/platform/users" element={<ProtectedRoute platform><PlatformUsers /></ProtectedRoute>} />
       <Route path="/platform/audit-log" element={<ProtectedRoute platform><PlatformAuditLog /></ProtectedRoute>} />
-      {/* Masih di menu PlatformSidebar (ditandai "BARU") tapi belum dibangun
-          penuh — butuh keputusan produk (Katalog Paket, lihat audit fitur)
-          atau infrastruktur data historis yang belum ada (Langganan &
-          Pendapatan) — lihat catatan di PlatformComingSoon.jsx. */}
-      <Route path="/platform/revenue" element={<ProtectedRoute platform><PlatformComingSoon title="Langganan & Pendapatan" description="Tren MRR, distribusi paket, dan riwayat konversi lebih lengkap." icon="fa-chart-line" /></ProtectedRoute>} />
-      <Route path="/platform/plans" element={<ProtectedRoute platform><PlatformComingSoon title="Katalog Paket" description="Lihat dan kelola paket langganan yang ditawarkan." icon="fa-layer-group" /></ProtectedRoute>} />
-      <Route path="/platform/activity" element={<ProtectedRoute platform><PlatformComingSoon title="Aktivitas Realtime" description="Feed aktivitas lintas tenant secara penuh, bisa difilter." icon="fa-tower-broadcast" /></ProtectedRoute>} />
+      <Route path="/platform/revenue" element={<ProtectedRoute platform><PlatformRevenue /></ProtectedRoute>} />
+      <Route path="/platform/plans" element={<ProtectedRoute platform><PlatformPlans /></ProtectedRoute>} />
+      <Route path="/platform/activity" element={<ProtectedRoute platform><PlatformActivity /></ProtectedRoute>} />
 
       <Route path="/" element={<HomeRoute />} />
       <Route path="*" element={<NotFoundRedirect />} />

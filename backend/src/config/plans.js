@@ -1,30 +1,44 @@
+const pool = require('./db');
+
 /**
  * ============================================================================
- *  KATALOG PAKET LANGGANAN (Fase 4 SaaS, revisi harga & limit susulan)
+ *  KATALOG PAKET LANGGANAN — DIKACU DI MEMORI (susulan billing Fase 4)
  * ============================================================================
- *  Satu-satunya sumber kebenaran untuk harga, limit, DAN daftar fitur tiap
- *  paket. Dipakai oleh:
- *    - middleware/planLimits.js  → menegakkan limit aset/pengguna/lokasi
- *    - billingController         → mengirim katalog ke frontend (termasuk
- *                                   `features`), memvalidasi permintaan
- *                                   upgrade/downgrade, snapshot harga invoice
- *    - subscriptionService.js    → snapshot harga saat subscription dibuat
+ *  Sebelumnya `PLANS` adalah array statis di berkas ini — mengubah harga/
+ *  limit/fitur paket butuh deploy ulang. Sekarang sumber kebenarannya tabel
+ *  `plans` (lihat migrations/migration_plans_catalog_db.sql), dikelola admin
+ *  platform lewat menu Katalog Paket (`platformController` listPlansAdmin/
+ *  createPlan/updatePlan/deletePlan/movePlan). Nama berkas ini TETAP
+ *  `config/plans.js` supaya semua `require('../config/plans')` yang sudah
+ *  ada tidak perlu diubah jalurnya.
  *
- *  Ini yang bikin rule "feature access berdasarkan plan, bukan nama plan
- *  yang tersebar di banyak tempat" berlaku: kalau perlu ubah fitur/limit/
- *  harga suatu paket, cukup ubah array di sini — TIDAK ada controller atau
- *  komponen frontend yang boleh hardcode angka/fitur plan sendiri-sendiri.
+ *  Katalognya disalin ke memori sekali saat server menyala (lihat
+ *  server.js — DITUNGGU sebelum app.listen(), bukan fire-and-forget seperti
+ *  utils/ipWhitelist.js, karena salah baca limit/harga di sini berdampak
+ *  langsung ke uang & penegakan limit, bukan cuma daftar putih IP), lalu
+ *  disegarkan ulang tiap kali admin platform menambah/mengubah/menghapus
+ *  paket. `getPlan()`/`isUpgrade()`/dll di bawah SEMUANYA sinkron (baca cache,
+ *  bukan query DB) — dipanggil di banyak titik permintaan (planLimits
+ *  middleware setiap POST aset/pengguna/lokasi), jadi tidak boleh nge-query
+ *  ulang setiap kali dipanggil.
  *
  *  `maxAssets`/`maxUsers`/`locationLimit` bernilai `null` berarti TANPA
  *  BATAS. `price`/`priceYearly` bernilai `null` berarti harga khusus
- *  (hubungi sales) — TIDAK ADA paket seperti itu di katalog saat ini, field
- *  ini cuma dukungan struktural untuk kalau `enterprise.customPricingHint`
- *  di bawah suatu saat perlu jadi paket harga khusus sungguhan.
+ *  (hubungi sales). `priceYearly` adalah harga SETAHUN PENUH (konvensi
+ *  "bayar 10 bulan, dapat 12 bulan").
  *
- *  `priceYearly` adalah harga SETAHUN PENUH (bukan per bulan) untuk siklus
- *  tagihan tahunan — konvensi "bayar 10 bulan, dapat 12 bulan"
- *  (priceYearly = price × 10), hemat ±16,7% dibanding 12× harga bulanan.
- *  `0` untuk Free (memang gratis, bukan "tidak relevan" seperti `null`).
+ *  `isActive = false` berarti paket "dipensiunkan": disembunyikan dari
+ *  katalog publik (`getAllPlans()`) dan tidak lagi bisa diajukan lewat
+ *  upgrade mandiri (`getSelfServePlanIds()`), TAPI tetap bisa di-resolve
+ *  lewat `getPlan(id)` untuk tenant lama yang masih memakainya — jangan
+ *  pernah menghapus fisik satu paket yang masih dipakai siapa pun (lihat
+ *  platformController.deletePlan untuk penjaganya).
+ *
+ *  Paket 'free' TIDAK BOLEH dihapus atau dinonaktifkan — signup mandiri
+ *  (authController) dan penurunan otomatis saat kedaluwarsa
+ *  (subscriptionService.downgradeToFreeOnExpiry) mengasumsikan paket ini
+ *  SELALU ada dan SELALU gratis. Ditegakkan di platformController, bukan
+ *  di sini.
  *
  *  Belum ada payment gateway sungguhan terpasang (lihat
  *  services/paymentGateway/) — paket berbayar diaktifkan lewat provider
@@ -34,124 +48,66 @@
  * ============================================================================
  */
 
-const PLANS = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    priceYearly: 0,
-    maxAssets: 100,
-    maxUsers: 2,
-    locationLimit: 1,
-    highlight: false,
-    custom: false,
-    selfServe: true,
-    tagline: 'Untuk mencoba sistem — tidak perlu kartu pembayaran.',
-    features: [
-      '100 aset',
-      '2 pengguna, 1 lokasi',
-      'Manajemen aset dasar',
-      'Dasbor ringkasan aset',
-      'Kode QR aset',
-      'Riwayat & ekspor data dasar',
-      'Dukungan komunitas',
-    ],
-  },
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: 99000,
-    priceYearly: 990000,
-    maxAssets: 1000,
-    maxUsers: 5,
-    locationLimit: null,
-    highlight: false,
-    custom: false,
-    selfServe: true,
-    tagline: 'Perusahaan kecil yang mulai serius merapikan aset.',
-    features: [
-      '1.000 aset, 5 pengguna',
-      'Multi-lokasi & sub-lokasi',
-      'Perpindahan (mutasi) aset',
-      'Manajemen pemeliharaan',
-      'Laporan lebih detail',
-      'Impor data dari Excel',
-      'QR/Barcode lanjutan',
-      'Dukungan prioritas',
-    ],
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: 249000,
-    priceYearly: 2490000,
-    maxAssets: 5000,
-    maxUsers: 15,
-    locationLimit: null,
-    highlight: true,
-    custom: false,
-    selfServe: true,
-    tagline: 'Paling banyak dipilih — tim IT/GA dengan banyak lokasi.',
-    features: [
-      '5.000 aset, 15 pengguna',
-      'Alur persetujuan (approval)',
-      'Peran & izin akses granular',
-      'Log audit',
-      'Penyusutan nilai aset',
-      'Laporan lanjutan',
-      'Impor & ekspor Excel',
-      'Dukungan prioritas',
-    ],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 599000,
-    priceYearly: 5990000,
-    maxAssets: 20000,
-    maxUsers: 50,
-    locationLimit: null,
-    highlight: false,
-    custom: false,
-    selfServe: true,
-    // Bukan paket "hubungi sales" — tetap bisa diajukan mandiri seperti
-    // paket lain (harga di atas berlaku sebagai default). `customPricingHint`
-    // murni microcopy CTA sekunder untuk kebutuhan DI ATAS itu (kontrak, SLA
-    // khusus) — bukan flag yang mengubah alur upgrade/downgrade normal.
-    customPricingHint: 'Butuh kapasitas lebih besar atau kontrak/SLA khusus?',
-    tagline: 'Organisasi besar — harga mulai dari, siap disesuaikan kebutuhan.',
-    features: [
-      '20.000+ aset, 50+ pengguna',
-      'Peran & izin akses lanjutan',
-      'Alur persetujuan lanjutan',
-      'Log audit lanjutan',
-      'Penyusutan aset & laporan kustom',
-      'Multi-cabang/lokasi tanpa batas',
-      'Akses API & dukungan integrasi',
-      'Dukungan prioritas/khusus',
-    ],
-  },
-];
+let cache = { all: [], byId: new Map() };
 
-const PLAN_BY_ID = Object.fromEntries(PLANS.map((p) => [p.id, p]));
+function mapRow(row) {
+  const features = Array.isArray(row.features)
+    ? row.features
+    : (typeof row.features === 'string' ? JSON.parse(row.features) : []);
 
-/** Semua paket saat ini bisa diajukan lewat alur upgrade/downgrade mandiri. */
-const SELF_SERVE_PLAN_IDS = PLANS.filter((p) => p.selfServe).map((p) => p.id);
-
-/** Urutan "tingkatan" paket — dipakai untuk membedakan upgrade vs downgrade
- *  (lihat billingController.createUpgradeRequest) tanpa membandingkan harga
- *  mentah (Enterprise sengaja lebih murah dari Business versi lama dulu
- *  pernah terjadi saat harga diubah — urutan eksplisit ini tidak ikut goyah
- *  kalau itu terulang). */
-const PLAN_TIER_ORDER = PLANS.map((p) => p.id);
-
-function getPlan(planId) {
-  return PLAN_BY_ID[planId] || null;
+  return {
+    id: row.id,
+    name: row.name,
+    tagline: row.tagline,
+    price: row.price,
+    priceYearly: row.price_yearly,
+    maxAssets: row.max_assets,
+    maxUsers: row.max_users,
+    locationLimit: row.location_limit,
+    features,
+    highlight: row.highlight,
+    custom: row.custom,
+    selfServe: row.self_serve,
+    customPricingHint: row.custom_pricing_hint || undefined,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+  };
 }
 
+/** Dipanggil sekali saat startup (server.js) dan lagi setiap kali admin
+ *  platform menulis ke tabel `plans` — lihat catatan berkas di atas. */
+async function reloadPlansCache() {
+  const [rows] = await pool.query(`SELECT * FROM plans ORDER BY sort_order ASC`);
+  const all = rows.map(mapRow);
+  cache = { all, byId: new Map(all.map((p) => [p.id, p])) };
+}
+
+/** Katalog publik/upgrade mandiri — HANYA paket aktif, urut sesuai tingkatan.
+ *  `{ includeInactive: true }` untuk keperluan admin (daftar kelola paket,
+ *  perhitungan MRR yang tidak boleh diam-diam mengecualikan tenant yang masih
+ *  membayar paket yang sudah dipensiunkan). */
+function getAllPlans({ includeInactive = false } = {}) {
+  return includeInactive ? cache.all : cache.all.filter((p) => p.isActive);
+}
+
+function getPlan(planId) {
+  return cache.byId.get(planId) || null;
+}
+
+/** Paket yang boleh diajukan lewat alur upgrade/downgrade mandiri tenant —
+ *  aktif DAN ditandai self-serve. */
+function getSelfServePlanIds() {
+  return cache.all.filter((p) => p.isActive && p.selfServe).map((p) => p.id);
+}
+
+/** Urutan "tingkatan" paket (kolom `sort_order`) — dipakai membedakan
+ *  upgrade vs downgrade (lihat billingController.createUpgradeRequest) tanpa
+ *  membandingkan harga mentah. Dicari dari SELURUH paket (termasuk yang
+ *  nonaktif) supaya tenant lama di paket yang sudah dipensiunkan tetap bisa
+ *  dibandingkan tingkatannya dengan benar. */
 function tierIndex(planId) {
-  const idx = PLAN_TIER_ORDER.indexOf(planId);
-  return idx === -1 ? null : idx;
+  const plan = cache.byId.get(planId);
+  return plan ? plan.sortOrder : null;
 }
 
 /** true kalau `toPlanId` tingkatannya lebih tinggi dari `fromPlanId` (upgrade
@@ -163,4 +119,4 @@ function isUpgrade(fromPlanId, toPlanId) {
   return to > from;
 }
 
-module.exports = { PLANS, PLAN_BY_ID, SELF_SERVE_PLAN_IDS, PLAN_TIER_ORDER, getPlan, tierIndex, isUpgrade };
+module.exports = { reloadPlansCache, getAllPlans, getPlan, getSelfServePlanIds, tierIndex, isUpgrade };

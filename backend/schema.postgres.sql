@@ -706,6 +706,11 @@ CREATE TABLE plan_upgrade_requests (
     previous_plan   VARCHAR(50) NULL,   -- snapshot paket SAAT permintaan dibuat (lihat catatan riwayat migrasi)
     billing_cycle   VARCHAR(10) NOT NULL DEFAULT 'monthly'  -- 'monthly'/'yearly' — lihat migration_billing_yearly_cycle.sql
                         CHECK (billing_cycle IN ('monthly', 'yearly')),
+    price           NUMERIC(14,2) NULL,   -- snapshot harga SAAT DIAJUKAN (lihat migration_upgrade_request_price_snapshot.sql)
+                                            -- — dipakai activateSubscription() saat disetujui, BUKAN harga katalog
+                                            -- SAAT ITU, supaya perubahan harga di menu Katalog Paket sesudah tenant
+                                            -- mengajukan tidak diam-diam mengubah jumlah yang ditagihkan.
+    currency        VARCHAR(3) NOT NULL DEFAULT 'IDR',
     note            TEXT NULL,
     status          VARCHAR(20) NOT NULL DEFAULT 'pending'
                         CHECK (status IN ('pending','approved','rejected')),
@@ -754,7 +759,7 @@ CREATE TABLE ip_whitelist (
 CREATE TABLE subscriptions (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id               BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    plan_id                 VARCHAR(50) NOT NULL,   -- lihat config/plans.js — bukan FK, katalog bukan tabel
+    plan_id                 VARCHAR(50) NOT NULL,   -- lihat tabel `plans` di bawah — SENGAJA bukan FK (lihat catatannya)
     billing_cycle           VARCHAR(10) NOT NULL DEFAULT 'monthly'
                                 CHECK (billing_cycle IN ('monthly', 'yearly')),
     status                  VARCHAR(20) NOT NULL DEFAULT 'active'
@@ -806,3 +811,67 @@ CREATE INDEX idx_invoices_subscription ON invoices(subscription_id);
 CREATE INDEX idx_invoices_status ON invoices(status);
 CREATE TRIGGER trg_invoices_updated_at BEFORE UPDATE ON invoices
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =====================================================================
+-- 28. KATALOG PAKET (susulan billing Fase 4 — sebelumnya hardcode di
+--     backend/src/config/plans.js, lihat migration_plans_catalog_db.sql)
+-- =====================================================================
+-- Sekarang tabel sungguhan, dikelola admin platform lewat menu Katalog
+-- Paket — TAPI SENGAJA BUKAN FK dari tenants.plan/subscriptions.plan_id/
+-- plan_upgrade_requests.requested_plan: tenant vendor sendiri (dibuat
+-- scripts/bootstrap-super-admin.js) memakai plan_id 'enterprise_custom'
+-- yang BUKAN bagian katalog publik (tidak self-serve, tidak tampil di
+-- halaman Harga) — kalau dipaksa FK, baris itu butuh entri katalog palsu
+-- cuma supaya lolos constraint. Sebagai gantinya, larangan hapus paket yang
+-- masih dipakai tenant/subscription/permintaan ditegakkan di kode
+-- (platformController.deletePlan), bukan di database.
+--
+-- `config/plans.js` (nama berkas TETAP, isinya sekarang pemuat cache, bukan
+-- array statis) memuat seluruh baris ke memori saat server menyala dan
+-- menyegarkan ulang cache-nya setiap kali admin platform menambah/
+-- mengubah/menghapus paket — pola yang sama dengan utils/ipWhitelist.js.
+-- `max_assets`/`max_users`/`location_limit` NULL = TANPA BATAS. `price`
+-- 0 = paket gratis (Free). `is_active = FALSE` = paket "dipensiunkan":
+-- tidak muncul lagi di katalog publik/pilihan upgrade mandiri, tapi TETAP
+-- bisa di-resolve untuk tenant lama yang masih memakainya (grandfathered) —
+-- jangan pernah dihapus fisik satu paket yang masih dipakai siapa pun.
+-- Paket 'free' tidak boleh dihapus ATAU dinonaktifkan lewat kode apa pun —
+-- signup mandiri (authController) dan penurunan otomatis saat kedaluwarsa
+-- (jobs/planExpiry.js -> subscriptionService.downgradeToFreeOnExpiry)
+-- keduanya mengasumsikan paket ini SELALU ada dan SELALU gratis.
+CREATE TABLE plans (
+    id                  VARCHAR(50) PRIMARY KEY,   -- slug, mis. 'free'/'starter' — dipakai apa adanya di tenants.plan dst.
+    name                VARCHAR(100) NOT NULL,
+    tagline             VARCHAR(255) NOT NULL DEFAULT '',
+    price               INT NOT NULL DEFAULT 0,          -- harga bulanan (IDR), 0 = gratis
+    price_yearly        INT NULL,                        -- harga SETAHUN PENUH, NULL = tidak ditawarkan tahunan
+    max_assets          INT NULL,                        -- NULL = tanpa batas
+    max_users           INT NULL,
+    location_limit      INT NULL,
+    features            JSONB NOT NULL DEFAULT '[]'::jsonb,
+    highlight           BOOLEAN NOT NULL DEFAULT FALSE,  -- badge "Paling Populer" di halaman Harga
+    custom              BOOLEAN NOT NULL DEFAULT FALSE,  -- true = harga khusus/"hubungi sales"
+    self_serve          BOOLEAN NOT NULL DEFAULT TRUE,   -- boleh diajukan lewat alur upgrade mandiri tenant
+    custom_pricing_hint VARCHAR(255) NULL,               -- microcopy CTA sekunder, lihat config/plans.js lama
+    sort_order          INT NOT NULL DEFAULT 0,          -- urutan "tingkatan" — dipakai isUpgrade()/tierIndex(), BUKAN harga mentah
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_plans_sort_order ON plans(sort_order);
+CREATE TRIGGER trg_plans_updated_at BEFORE UPDATE ON plans
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+INSERT INTO plans (id, name, tagline, price, price_yearly, max_assets, max_users, location_limit, features, highlight, custom, self_serve, custom_pricing_hint, sort_order, is_active) VALUES
+('free', 'Free', 'Untuk mencoba sistem — tidak perlu kartu pembayaran.', 0, 0, 100, 2, 1,
+    '["100 aset","2 pengguna, 1 lokasi","Manajemen aset dasar","Dasbor ringkasan aset","Kode QR aset","Riwayat & ekspor data dasar","Dukungan komunitas"]'::jsonb,
+    FALSE, FALSE, TRUE, NULL, 0, TRUE),
+('starter', 'Starter', 'Perusahaan kecil yang mulai serius merapikan aset.', 99000, 990000, 1000, 5, NULL,
+    '["1.000 aset, 5 pengguna","Multi-lokasi & sub-lokasi","Perpindahan (mutasi) aset","Manajemen pemeliharaan","Laporan lebih detail","Impor data dari Excel","QR/Barcode lanjutan","Dukungan prioritas"]'::jsonb,
+    FALSE, FALSE, TRUE, NULL, 1, TRUE),
+('business', 'Business', 'Paling banyak dipilih — tim IT/GA dengan banyak lokasi.', 249000, 2490000, 5000, 15, NULL,
+    '["5.000 aset, 15 pengguna","Alur persetujuan (approval)","Peran & izin akses granular","Log audit","Penyusutan nilai aset","Laporan lanjutan","Impor & ekspor Excel","Dukungan prioritas"]'::jsonb,
+    TRUE, FALSE, TRUE, NULL, 2, TRUE),
+('enterprise', 'Enterprise', 'Organisasi besar — harga mulai dari, siap disesuaikan kebutuhan.', 599000, 5990000, 20000, 50, NULL,
+    '["20.000+ aset, 50+ pengguna","Peran & izin akses lanjutan","Alur persetujuan lanjutan","Log audit lanjutan","Penyusutan aset & laporan kustom","Multi-cabang/lokasi tanpa batas","Akses API & dukungan integrasi","Dukungan prioritas/khusus"]'::jsonb,
+    FALSE, FALSE, TRUE, 'Butuh kapasitas lebih besar atau kontrak/SLA khusus?', 3, TRUE);

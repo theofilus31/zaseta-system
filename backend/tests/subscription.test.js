@@ -1,9 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('./helpers/teardown');
+require('./helpers/setup');
 const pool = require('../src/config/db');
 const { activateSubscription, cancelActiveSubscription } = require('../src/services/subscriptionService');
 const billingController = require('../src/controllers/billingController');
+const { updatePlan } = require('../src/controllers/platformController');
+const { getPlan } = require('../src/config/plans');
 const { createTestTenant, dropTestTenant, bulkInsertAssets } = require('./helpers/testTenant');
 const { mockReq, runMiddleware } = require('./helpers/mockReqRes');
 
@@ -84,6 +87,33 @@ test('Downgrade Business -> Starter, pemakaian MELEBIHI limit: dapat peringatan,
   assert.equal((await currentPlan(tenantId)).plan, 'starter', 'paket sungguhan berubah ke Starter');
   const [[{ count }]] = await pool.query('SELECT COUNT(*) AS count FROM assets WHERE tenant_id = :tenantId', { tenantId });
   assert.equal(Number(count), 3000, 'ke-3000 aset lama TIDAK boleh terhapus oleh downgrade');
+});
+
+test('Harga paket berubah SELAGI permintaan upgrade menunggu: tenant tetap ditagih harga saat mengajukan, bukan harga baru', async (t) => {
+  const originalStarterPrice = getPlan('starter').price;
+  t.after(() => runMiddleware(updatePlan, mockReq({ params: { id: 'starter' }, body: { price: originalStarterPrice } })));
+
+  const tenantId = await createTestTenant('free');
+  t.after(() => dropTestTenant(tenantId));
+
+  const createReq = mockReq({ tenantId, body: { requestedPlan: 'starter', billingCycle: 'monthly' } });
+  const { res: createRes } = await runMiddleware(billingController.createUpgradeRequest, createReq);
+  assert.equal(createRes.statusCode, 201);
+  assert.equal(createRes.body.price, originalStarterPrice, 'harga dikunci di angka katalog SAAT MENGAJUKAN');
+
+  // Admin platform menaikkan harga Starter SELAGI permintaan di atas masih menunggu.
+  const priceChange = await runMiddleware(updatePlan, mockReq({ params: { id: 'starter' }, body: { price: 777000 } }));
+  assert.equal(priceChange.res.statusCode, 200);
+  assert.equal(getPlan('starter').price, 777000);
+
+  const approveReq = mockReq({ tenantId, params: { id: String(createRes.body.id) } });
+  const { res: approveRes } = await runMiddleware(billingController.approveUpgradeRequest, approveReq);
+  assert.equal(approveRes.body.status, 'approved');
+
+  const [[sub]] = await pool.query('SELECT price FROM subscriptions WHERE tenant_id = :tenantId ORDER BY id DESC LIMIT 1', { tenantId });
+  const [[invoice]] = await pool.query('SELECT amount FROM invoices WHERE tenant_id = :tenantId ORDER BY id DESC LIMIT 1', { tenantId });
+  assert.equal(Number(sub.price), originalStarterPrice, 'subscription harus pakai harga saat pengajuan, bukan harga baru (777000)');
+  assert.equal(Number(invoice.amount), originalStarterPrice, 'invoice harus pakai harga saat pengajuan, bukan harga baru (777000)');
 });
 
 test('Batalkan langganan: status jadi canceled TAPI tenants.plan tidak langsung diturunkan', async (t) => {

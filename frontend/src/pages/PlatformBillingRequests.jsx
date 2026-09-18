@@ -24,6 +24,8 @@ import { SegmentedControl } from '../components/ui/Button.jsx';
  * ============================================================================
  */
 
+const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
+
 const STATUS_TONE = { pending: 'warning', approved: 'brand', rejected: 'danger' };
 const STATUS_LABEL = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
 
@@ -54,6 +56,17 @@ function RequestCard({ req, onDecide, busy }) {
         <Badge tone="brand">{req.requestedPlan}</Badge>
         <Badge tone="neutral">{req.billingCycle === 'yearly' ? 'Tahunan' : 'Bulanan'}</Badge>
       </div>
+
+      {/* Harga yang DIKUNCI saat tenant mengajukan (lihat createUpgradeRequest)
+          — bisa beda dari harga katalog SAAT INI kalau admin sempat mengubahnya
+          lewat menu Katalog Paket selagi permintaan ini menunggu. Menyetujui
+          SELALU memakai angka ini, bukan harga katalog terkini. */}
+      {req.price !== null && req.price !== undefined && (
+        <p className="mt-2 text-[13px] text-ink-600">
+          Ditagih: <strong className="text-ink-900">{rupiah(req.price)}</strong>
+          <span className="text-ink-400"> — dikunci saat pengajuan, tidak ikut berubah kalau harga paket diubah sesudahnya</span>
+        </p>
+      )}
 
       {req.note && (
         <p className="mt-3 text-[13px] text-ink-600 bg-ink-50 rounded-xl px-3.5 py-2.5 leading-relaxed">

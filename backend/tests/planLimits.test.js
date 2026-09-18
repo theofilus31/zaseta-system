@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('./helpers/teardown');
+require('./helpers/setup');
 const pool = require('../src/config/db');
 const { checkAssetLimit, checkUserLimit, checkLocationLimit } = require('../src/middleware/planLimits');
 const { createTestTenant, dropTestTenant, bulkInsertAssets, bulkInsertUsers, bulkInsertLocations } = require('./helpers/testTenant');

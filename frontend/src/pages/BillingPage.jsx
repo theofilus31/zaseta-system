@@ -261,6 +261,8 @@ export default function BillingPage() {
             <p className="text-sm text-warning-800 leading-relaxed">
               Permintaan upgrade ke paket <strong>{plans.find((p) => p.id === data.pendingRequest.requestedPlan)?.name || data.pendingRequest.requestedPlan}</strong>
               {' '}({data.pendingRequest.billingCycle === 'yearly' ? 'tahunan' : 'bulanan'}) sedang menunggu verifikasi admin kami.
+              {' '}Harga yang akan ditagihkan sudah dikunci di <strong>{rupiah(data.pendingRequest.price)}</strong> —
+              tidak berubah walau harga paket ini diubah sebelum disetujui.
             </p>
           </div>
         )}

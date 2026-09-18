@@ -21,9 +21,6 @@ import ProductBrandMark from '../ProductBrandMark.jsx';
  *  seluruh sistem terasa dua produk berbeda alih-alih satu. Sekarang
  *  memakai bg-brand-950 + palet brand & white yang sama persis dengan
  *  Sidebar.jsx tenant, supaya temanya konsisten di seluruh sistem.
- *
- *  Item bertanda `isNew` menunjuk ke halaman yang belum dibangun penuh —
- *  lihat PlatformComingSoon.jsx.
  * ============================================================================
  */
 const NAV_GROUPS = [
@@ -42,14 +39,14 @@ const NAV_GROUPS = [
   {
     label: 'Monetisasi',
     items: [
-      { to: '/platform/revenue', label: 'Langganan & Pendapatan', icon: 'fa-chart-line', isNew: true },
-      { to: '/platform/plans', label: 'Katalog Paket', icon: 'fa-layer-group', isNew: true },
+      { to: '/platform/revenue', label: 'Langganan & Pendapatan', icon: 'fa-chart-line' },
+      { to: '/platform/plans', label: 'Katalog Paket', icon: 'fa-layer-group' },
     ],
   },
   {
     label: 'Sistem',
     items: [
-      { to: '/platform/activity', label: 'Aktivitas Realtime', icon: 'fa-tower-broadcast', isNew: true },
+      { to: '/platform/activity', label: 'Aktivitas Realtime', icon: 'fa-tower-broadcast' },
       { to: '/platform/audit-log', label: 'Log Audit Platform', icon: 'fa-shield-halved' },
       { to: '/platform/admins', label: 'Admin Platform', icon: 'fa-user-shield' },
       { to: '/platform/ip-whitelist', label: 'Daftar Putih IP', icon: 'fa-network-wired' },

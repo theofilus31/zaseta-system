@@ -9,7 +9,15 @@ const { authenticate, requirePlatformAdmin } = require('../middleware/auth');
 router.use(authenticate, requirePlatformAdmin);
 
 router.get('/stats', ctrl.getStats);
+router.get('/revenue', ctrl.getRevenue);
+router.get('/activity', ctrl.getActivity);
 router.post('/plan-expiry/run', ctrl.runPlanExpiryNow);
+
+router.get('/plans', ctrl.listPlansAdmin);
+router.post('/plans', ctrl.createPlan);
+router.patch('/plans/:id', ctrl.updatePlan);
+router.patch('/plans/:id/move', ctrl.movePlan);
+router.delete('/plans/:id', ctrl.deletePlan);
 
 router.get('/tenants', ctrl.listTenants);
 router.patch('/tenants/:id/status', ctrl.updateTenantStatus);

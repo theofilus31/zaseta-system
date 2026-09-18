@@ -4,11 +4,27 @@ require('dotenv').config();
 const { runNotificationDigest } = require('./jobs/notificationDigest');
 const { runPlanExpiryCheck } = require('./jobs/planExpiry');
 const { reloadIpWhitelist } = require('./utils/ipWhitelist');
+const { reloadPlansCache } = require('./config/plans');
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`ZASETA API berjalan di port ${PORT}`);
-});
+
+/* Katalog paket DITUNGGU sebelum server mulai menerima permintaan — beda
+   dari reloadIpWhitelist() di bawah yang sengaja fire-and-forget (daftar
+   putih IP kosong sesaat cuma berarti pembatas laju sedikit lebih ketat,
+   dampaknya kecil). Cache paket kosong berarti planLimits middleware,
+   billingController, DAN signup/downgrade otomatis semuanya salah baca
+   harga/limit paket 'free' sekalipun — risiko yang tidak sepadan dengan
+   beberapa milidetik keterlambatan start server. */
+reloadPlansCache()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`ZASETA API berjalan di port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Gagal memuat katalog paket saat startup — server TIDAK dijalankan:', err);
+    process.exit(1);
+  });
 
 /* Cache daftar putih IP dimuat sekali di sini, sebelum permintaan pertama
    sempat ditolak pembatas laju gara-gara cache-nya masih kosong (lihat

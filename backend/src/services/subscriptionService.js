@@ -43,19 +43,29 @@ async function nextInvoiceNumber() {
  * mengoreksi paket tenant secara manual.
  *
  *  1. Tutup subscription aktif/trialing lama tenant ini (kalau ada).
- *  2. Buat baris subscriptions baru — harga di-snapshot dari config/plans.js
- *     SAAT INI (bukan dihitung ulang nanti kalau katalog berubah).
+ *  2. Buat baris subscriptions baru — harga di-snapshot SEKARANG (dari
+ *     `priceOverride` kalau dioper, atau dari config/plans.js SAAT INI kalau
+ *     tidak) — bukan dihitung ulang lagi nanti kalau katalog berubah.
  *  3. Buat invoice 'paid' untuk paket berbayar lewat provider pembayaran
  *     aktif (lihat services/paymentGateway) — TIDAK ada invoice untuk Free
  *     (Free tidak pernah butuh subscription payment).
  *  4. Sinkronkan cache tenants.plan/plan_expires_at/billing_cycle.
+ *
+ *  `priceOverride` — dipakai billingController.resolveUpgradeRequest supaya
+ *  tenant ditagih harga yang dia lihat SAAT MENGAJUKAN (snapshot di
+ *  plan_upgrade_requests.price), bukan harga katalog saat admin baru sempat
+ *  menyetujui — katalog sekarang bisa diubah instan lewat menu Katalog
+ *  Paket, jadi keduanya bisa berbeda kalau harga sempat diubah selagi
+ *  permintaan menunggu. `null`/`undefined` (bawaan) berarti "pakai harga
+ *  katalog saat ini" — perilaku lama, dipakai authController (signup Free)
+ *  dan permintaan lama dari sebelum kolom price ada di plan_upgrade_requests.
  */
-async function activateSubscription({ tenantId, planId, billingCycle = 'monthly', createdBy = null, provider = 'manual' }) {
+async function activateSubscription({ tenantId, planId, billingCycle = 'monthly', createdBy = null, provider = 'manual', priceOverride = null }) {
   const plan = getPlan(planId);
   if (!plan) throw new Error(`Paket "${planId}" tidak dikenal.`);
 
   const resolvedCycle = plan.price && billingCycle === 'yearly' ? 'yearly' : 'monthly';
-  const price = priceFor(plan, resolvedCycle);
+  const price = priceOverride !== null && priceOverride !== undefined ? Number(priceOverride) : priceFor(plan, resolvedCycle);
   const periodEnd = periodEndFor(resolvedCycle, price);
 
   await pool.query(

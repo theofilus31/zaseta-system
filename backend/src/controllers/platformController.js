@@ -4,7 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { sendNewUserWelcome } = require('../utils/mailer');
 const { generateTempPassword } = require('../utils/tempPassword');
-const { PLANS, getPlan } = require('../config/plans');
+const { getAllPlans, getPlan, reloadPlansCache } = require('../config/plans');
 const { recordManualCorrection } = require('../services/subscriptionService');
 const { runPlanExpiryCheck } = require('../jobs/planExpiry');
 const { clampPagination } = require('../utils/pagination');
@@ -62,9 +62,12 @@ const getStats = asyncHandler(async (req, res) => {
 
   // Perkiraan pendapatan bulanan — dihitung dari harga katalog x jumlah tenant
   // per paket, BUKAN dari transaksi sungguhan (belum ada payment gateway,
-  // lihat billingController). Paket gratis & Enterprise Custom (price: null)
-  // sengaja tidak ikut dihitung.
-  const estimatedMrr = PLANS.reduce((sum, plan) => {
+  // lihat billingController). Paket gratis & Enterprise Custom (price: null,
+  // bukan bagian katalog `plans` sama sekali) sengaja tidak ikut dihitung.
+  // `includeInactive: true` — tenant yang masih di paket yang SUDAH
+  // dipensiunkan (is_active=false) tetap harus ikut terhitung, mereka masih
+  // membayar walau paketnya sudah tidak ditawarkan ke pelanggan baru.
+  const estimatedMrr = getAllPlans({ includeInactive: true }).reduce((sum, plan) => {
     if (!plan.price) return sum;
     return sum + plan.price * (planCounts[plan.id] || 0);
   }, 0);
@@ -92,10 +95,16 @@ const getStats = asyncHandler(async (req, res) => {
   // Kumulatif harian lewat generate_series + subquery korelasi — bukan yang
   // paling efisien, tapi jendelanya cuma 30 hari dan halaman ini jarang
   // dibuka, jadi kesederhanaan (gampang dibaca ulang setahun lagi) menang atas
-  // performa mikro. ::date/::text di-cast eksplisit di SQL supaya tidak
-  // bergantung ke pengaturan timezone Node vs Postgres.
+  // performa mikro. `d.day` bertipe TIMESTAMPTZ (bukan DATE) karena salah satu
+  // overload generate_series yang dipilih Postgres untuk argumen tanggal +
+  // interval — `::text` langsung di atasnya jadi ikut membawa jam & zona waktu
+  // ("2026-09-18 00:00:00+07"), bukan "2026-09-18" bersih seperti yang
+  // dimaksud komentar aslinya. GrowthChart.jsx mengasumsikan string tanggal
+  // polos (`new Date(isoDate + 'T00:00:00')`), jadi tanpa `::date` dulu SEBELUM
+  // `::text`, label sumbu-X-nya jadi "Invalid Date". `::date::text` (dua cast)
+  // yang benar, bukan `::text` saja.
   const [userGrowth] = await pool.query(
-    `SELECT d.day::text AS date,
+    `SELECT d.day::date::text AS date,
             (SELECT COUNT(*) FROM users u WHERE u.deleted_at IS NULL AND u.created_at::date <= d.day) AS value
      FROM generate_series((CURRENT_DATE - INTERVAL '${growthDays - 1} days')::date, CURRENT_DATE, '1 day') AS d(day)
      ORDER BY d.day ASC`
@@ -108,7 +117,7 @@ const getStats = asyncHandler(async (req, res) => {
   // jadi grafik ini adalah PENDEKATAN, titik terakhirnya bisa sedikit lebih
   // rendah dari `tenants.subscribed` di atas. Itu bukan bug.
   const [subscriberGrowth] = await pool.query(
-    `SELECT d.day::text AS date,
+    `SELECT d.day::date::text AS date,
             (SELECT COUNT(DISTINCT pur.tenant_id) FROM plan_upgrade_requests pur
              WHERE pur.status = 'approved' AND pur.reviewed_at::date <= d.day) AS value
      FROM generate_series((CURRENT_DATE - INTERVAL '${growthDays - 1} days')::date, CURRENT_DATE, '1 day') AS d(day)
@@ -140,6 +149,321 @@ const getStats = asyncHandler(async (req, res) => {
     subscriberGrowth,
     recentActivity,
   });
+});
+
+// GET /api/platform/revenue?days=7|30|90 — dipakai halaman "Langganan &
+// Pendapatan". BEDA dari getStats.estimatedMrr (perkiraan katalog): di sini
+// `revenueAllTime`/`revenueGrowth` diambil dari tabel `invoices` yang sungguhan
+// dibuat activateSubscription() saat admin menyetujui upgrade (lihat
+// subscriptionService.js) — jadi angka pendapatan riil, bukan proyeksi.
+// `estimatedMrr`/`planBreakdown` tetap proyeksi katalog (harga x jumlah
+// tenant AKTIF sekarang di paket itu) karena tenant bisa downgrade/upgrade
+// kapan saja — pendapatan BULAN DEPAN memang cuma bisa diperkirakan, bukan
+// dihitung pasti dari histori.
+const getRevenue = asyncHandler(async (req, res) => {
+  const days = GROWTH_DAY_OPTIONS.includes(Number(req.query.days))
+    ? Number(req.query.days)
+    : DEFAULT_GROWTH_DAYS;
+
+  const [planRows] = await pool.query(`SELECT plan, COUNT(*) AS count FROM tenants GROUP BY plan`);
+  const planCounts = Object.fromEntries(planRows.map((r) => [r.plan, r.count]));
+
+  const planBreakdown = getAllPlans({ includeInactive: true }).filter((p) => p.price).map((p) => ({
+    id: p.id,
+    name: p.name,
+    tenantCount: planCounts[p.id] || 0,
+    mrr: p.price * (planCounts[p.id] || 0),
+  }));
+  const estimatedMrr = planBreakdown.reduce((sum, p) => sum + p.mrr, 0);
+  const payingTenants = planBreakdown.reduce((sum, p) => sum + p.tenantCount, 0);
+
+  const [[{ total: revenueAllTime }]] = await pool.query(
+    `SELECT COALESCE(SUM(amount), 0) AS total FROM invoices WHERE status = 'paid'`
+  );
+
+  // Kumulatif — sama persis pola userGrowth/subscriberGrowth di getStats,
+  // supaya bisa dipakai langsung oleh komponen GrowthChart yang sama
+  // (komponennya sengaja tidak menjumlahkan apa pun sendiri). `d.day::date::text`
+  // (BUKAN `d.day::text` saja) — lihat catatan panjang di getStats.userGrowth
+  // soal kenapa cast tunggal membawa jam & zona waktu yang bikin GrowthChart
+  // gagal mem-parsing tanggalnya.
+  const [revenueGrowth] = await pool.query(
+    `SELECT d.day::date::text AS date,
+            COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.status = 'paid' AND i.paid_at::date <= d.day), 0) AS value
+     FROM generate_series((CURRENT_DATE - INTERVAL '${days - 1} days')::date, CURRENT_DATE, '1 day') AS d(day)
+     ORDER BY d.day ASC`
+  );
+
+  // Pratinjau ringkas — riwayat LENGKAP (dengan aksi setuju/tolak) tetap di
+  // halaman Permintaan Upgrade (tab "Semua"), jangan diduplikasi di sini.
+  const [recentConversions] = await pool.query(
+    `SELECT r.id, r.requested_plan AS "requestedPlan", r.previous_plan AS "previousPlan",
+            r.status, r.reviewed_at AS "reviewedAt", t.company_name AS "tenantName"
+     FROM plan_upgrade_requests r
+     JOIN tenants t ON t.id = r.tenant_id
+     WHERE r.status IN ('approved', 'rejected')
+     ORDER BY r.reviewed_at DESC
+     LIMIT 6`
+  );
+
+  res.json({
+    estimatedMrr,
+    payingTenants,
+    arpu: payingTenants > 0 ? Math.round(estimatedMrr / payingTenants) : 0,
+    revenueAllTime: Number(revenueAllTime),
+    planBreakdown,
+    days,
+    revenueGrowth,
+    recentConversions,
+  });
+});
+
+// GET /api/platform/activity?action=&tenantId= — feed aktivitas lintas tenant
+// yang ramah dibaca (mirip kartu "Aktivitas Realtime" di Dashboard, tapi daftar
+// penuh + filter), dipoll berkala oleh frontend. SENGAJA tidak menyertakan
+// oldValues/newValues seperti listAllAuditLogs — payload itu berat dan tidak
+// perlu untuk feed yang di-refresh tiap beberapa detik; kalau admin butuh
+// detail before/after, itu tugas halaman Log Audit Platform, bukan ini.
+const ACTIVITY_LIMIT = 100;
+const getActivity = asyncHandler(async (req, res) => {
+  const { action, tenantId } = req.query;
+  const conditions = [];
+  const params = {};
+  if (action) {
+    conditions.push('al.action = :action');
+    params.action = action;
+  }
+  if (tenantId) {
+    conditions.push('al.tenant_id = :tenantId');
+    params.tenantId = tenantId;
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const [rows] = await pool.query(
+    `SELECT al.id, al.action, al.entity_type AS "entityType", al.created_at AS "createdAt",
+            u.name AS "userName", t.id AS "tenantId", t.company_name AS "tenantName"
+     FROM audit_logs al
+     JOIN tenants t ON t.id = al.tenant_id
+     LEFT JOIN users u ON u.id = al.user_id
+     ${whereClause}
+     ORDER BY al.created_at DESC
+     LIMIT ${ACTIVITY_LIMIT}`,
+    params
+  );
+
+  res.json({ logs: rows });
+});
+
+/**
+ * ============================================================================
+ *  KATALOG PAKET (CRUD) — dipakai halaman Katalog Paket admin platform
+ * ============================================================================
+ *  Sumber kebenaran sekarang tabel `plans` (lihat
+ *  migrations/migration_plans_catalog_db.sql) — config/plans.js hanya
+ *  pemuat cache di memori. Setiap fungsi yang MENULIS di sini WAJIB
+ *  memanggil `reloadPlansCache()` sesudahnya, kalau tidak permintaan
+ *  berikutnya (di proses Node yang sama) masih membaca data lama sampai
+ *  server di-restart.
+ *
+ *  Paket 'free' dikunci di beberapa sisi (lihat guard PROTECTED_FREE_PLAN_ID
+ *  di bawah) karena authController.signup/googleSignup dan
+ *  subscriptionService.downgradeToFreeOnExpiry mengasumsikannya SELALU ada
+ *  dan SELALU gratis — kalau itu berubah tanpa sepengetahuan kode-kode itu,
+ *  tenant baru & penurunan otomatis kedaluwarsa langsung rusak.
+ * ============================================================================
+ */
+const PROTECTED_FREE_PLAN_ID = 'free';
+const PLAN_ID_REGEX = /^[a-z][a-z0-9_]{1,49}$/;
+
+function normalizeNullableInt(value, fieldLabel) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) {
+    const err = new Error(`${fieldLabel} harus bilangan bulat >= 0, atau dikosongkan untuk tanpa batas.`);
+    err.status = 400;
+    throw err;
+  }
+  return n;
+}
+
+function normalizeFeatures(features) {
+  if (!Array.isArray(features)) return [];
+  return features.map((f) => String(f).trim()).filter(Boolean).slice(0, 30);
+}
+
+// GET /api/platform/plans — SEMUA paket termasuk yang sudah dipensiunkan
+// (is_active=false), beda dari GET /api/billing/plans (publik, aktif saja).
+const listPlansAdmin = asyncHandler(async (req, res) => {
+  res.json({ plans: getAllPlans({ includeInactive: true }) });
+});
+
+// POST /api/platform/plans — buat paket baru, ditambahkan di URUTAN PALING
+// BAWAH katalog (sort_order = max+1). Urutan tingkatannya sendiri baru
+// bisa diatur sesudahnya lewat movePlan (naik/turun).
+const createPlan = asyncHandler(async (req, res) => {
+  const { id, name, tagline, price, priceYearly, maxAssets, maxUsers, locationLimit,
+    features, highlight, custom, selfServe, customPricingHint } = req.body;
+
+  const normalizedId = String(id || '').trim().toLowerCase();
+  if (!PLAN_ID_REGEX.test(normalizedId)) {
+    return res.status(400).json({ message: 'ID paket harus huruf kecil/angka/garis bawah, diawali huruf, 2-50 karakter (mis. "starter_plus").' });
+  }
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ message: 'Nama paket wajib diisi.' });
+  }
+
+  const [[existing]] = await pool.query(`SELECT id FROM plans WHERE id = :id`, { id: normalizedId });
+  if (existing) {
+    return res.status(409).json({ message: `ID paket "${normalizedId}" sudah dipakai.` });
+  }
+
+  const [[{ nextOrder }]] = await pool.query(`SELECT COALESCE(MAX(sort_order), -1) + 1 AS "nextOrder" FROM plans`);
+
+  const priceValue = Number(price) || 0;
+  await pool.query(
+    `INSERT INTO plans (id, name, tagline, price, price_yearly, max_assets, max_users, location_limit,
+                          features, highlight, custom, self_serve, custom_pricing_hint, sort_order, is_active)
+     VALUES (:id, :name, :tagline, :price, :priceYearly, :maxAssets, :maxUsers, :locationLimit,
+             :features, :highlight, :custom, :selfServe, :customPricingHint, :sortOrder, TRUE)`,
+    {
+      id: normalizedId,
+      name: String(name).trim(),
+      tagline: String(tagline || '').trim(),
+      price: priceValue,
+      priceYearly: normalizeNullableInt(priceYearly, 'Harga tahunan'),
+      maxAssets: normalizeNullableInt(maxAssets, 'Batas aset'),
+      maxUsers: normalizeNullableInt(maxUsers, 'Batas pengguna'),
+      locationLimit: normalizeNullableInt(locationLimit, 'Batas lokasi'),
+      features: JSON.stringify(normalizeFeatures(features)),
+      highlight: Boolean(highlight),
+      custom: Boolean(custom),
+      selfServe: selfServe === undefined ? true : Boolean(selfServe),
+      customPricingHint: customPricingHint ? String(customPricingHint).trim() : null,
+      sortOrder: nextOrder,
+    }
+  );
+
+  await reloadPlansCache();
+  // entityId TIDAK dioper -- audit_logs.entity_id bertipe BIGINT, sedangkan
+  // id paket adalah slug teks ('starter', dst.), jadi disertakan di
+  // newValues saja (JSONB, terima teks apa pun).
+  await logAudit({ userId: req.user.id, action: 'create', entityType: 'plan', newValues: { id: normalizedId, name } });
+
+  res.status(201).json({ plan: getPlan(normalizedId) });
+});
+
+// PATCH /api/platform/plans/:id — update sebagian field. `id` dan `sortOrder`
+// TIDAK bisa diubah lewat sini (id = primary key/immutable, sortOrder lewat
+// movePlan) — dikirim di body tetap diabaikan, bukan galat, supaya frontend
+// boleh mengirim objek paket apa adanya tanpa harus menyaringnya dulu.
+const updatePlan = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const [[existing]] = await pool.query(`SELECT * FROM plans WHERE id = :id`, { id });
+  if (!existing) return res.status(404).json({ message: 'Paket tidak ditemukan.' });
+
+  const body = req.body;
+  const isFree = id === PROTECTED_FREE_PLAN_ID;
+
+  if (isFree && body.price !== undefined && Number(body.price) !== 0) {
+    return res.status(400).json({ message: 'Paket Free tidak boleh diberi harga — signup mandiri mengasumsikannya selalu gratis.' });
+  }
+  if (isFree && body.isActive === false) {
+    return res.status(400).json({ message: 'Paket Free tidak boleh dinonaktifkan — dipakai signup mandiri & penurunan otomatis saat kedaluwarsa.' });
+  }
+
+  const next = {
+    name: body.name !== undefined ? String(body.name).trim() : existing.name,
+    tagline: body.tagline !== undefined ? String(body.tagline).trim() : existing.tagline,
+    price: body.price !== undefined ? (Number(body.price) || 0) : existing.price,
+    priceYearly: body.priceYearly !== undefined ? normalizeNullableInt(body.priceYearly, 'Harga tahunan') : existing.price_yearly,
+    maxAssets: body.maxAssets !== undefined ? normalizeNullableInt(body.maxAssets, 'Batas aset') : existing.max_assets,
+    maxUsers: body.maxUsers !== undefined ? normalizeNullableInt(body.maxUsers, 'Batas pengguna') : existing.max_users,
+    locationLimit: body.locationLimit !== undefined ? normalizeNullableInt(body.locationLimit, 'Batas lokasi') : existing.location_limit,
+    features: body.features !== undefined ? JSON.stringify(normalizeFeatures(body.features)) : JSON.stringify(existing.features),
+    highlight: body.highlight !== undefined ? Boolean(body.highlight) : existing.highlight,
+    custom: body.custom !== undefined ? Boolean(body.custom) : existing.custom,
+    selfServe: body.selfServe !== undefined ? Boolean(body.selfServe) : existing.self_serve,
+    customPricingHint: body.customPricingHint !== undefined ? (body.customPricingHint ? String(body.customPricingHint).trim() : null) : existing.custom_pricing_hint,
+    isActive: body.isActive !== undefined ? Boolean(body.isActive) : existing.is_active,
+  };
+
+  await pool.query(
+    `UPDATE plans SET name = :name, tagline = :tagline, price = :price, price_yearly = :priceYearly,
+            max_assets = :maxAssets, max_users = :maxUsers, location_limit = :locationLimit,
+            features = :features, highlight = :highlight, custom = :custom, self_serve = :selfServe,
+            custom_pricing_hint = :customPricingHint, is_active = :isActive
+     WHERE id = :id`,
+    { id, ...next }
+  );
+
+  await reloadPlansCache();
+  await logAudit({ userId: req.user.id, action: 'update', entityType: 'plan', newValues: { id, ...next } });
+
+  res.json({ plan: getPlan(id) });
+});
+
+// PATCH /api/platform/plans/:id/move — { direction: 'up'|'down' }. Menukar
+// sort_order dengan tetangga terdekat (BUKAN drag-and-drop bebas) — cukup
+// untuk katalog yang isinya beberapa paket saja, dan tidak mungkin
+// menghasilkan urutan yang bentrok/tidak lengkap seperti reorder bebas bisa.
+const movePlan = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const direction = req.body.direction === 'up' ? 'up' : req.body.direction === 'down' ? 'down' : null;
+  if (!direction) return res.status(400).json({ message: 'direction harus "up" atau "down".' });
+
+  const ordered = getAllPlans({ includeInactive: true });
+  const idx = ordered.findIndex((p) => p.id === id);
+  if (idx === -1) return res.status(404).json({ message: 'Paket tidak ditemukan.' });
+
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= ordered.length) {
+    return res.status(400).json({ message: `Paket ini sudah paling ${direction === 'up' ? 'atas' : 'bawah'}.` });
+  }
+
+  const current = ordered[idx];
+  const neighbor = ordered[swapIdx];
+
+  await pool.query(`UPDATE plans SET sort_order = :sortOrder WHERE id = :id`, { id: current.id, sortOrder: neighbor.sortOrder });
+  await pool.query(`UPDATE plans SET sort_order = :sortOrder WHERE id = :id`, { id: neighbor.id, sortOrder: current.sortOrder });
+
+  await reloadPlansCache();
+  await logAudit({ userId: req.user.id, action: 'update', entityType: 'plan', newValues: { id, moved: direction, swappedWith: neighbor.id } });
+
+  res.json({ plans: getAllPlans({ includeInactive: true }) });
+});
+
+// DELETE /api/platform/plans/:id — ditolak kalau paket 'free', atau kalau
+// masih dipakai tenant/subscription/permintaan upgrade mana pun (lihat
+// catatan "SENGAJA BUKAN FK" di migration_plans_catalog_db.sql — larangan
+// ini ditegakkan di sini, bukan di database).
+const deletePlan = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (id === PROTECTED_FREE_PLAN_ID) {
+    return res.status(400).json({ message: 'Paket Free tidak boleh dihapus.' });
+  }
+
+  const [[existing]] = await pool.query(`SELECT id, name FROM plans WHERE id = :id`, { id });
+  if (!existing) return res.status(404).json({ message: 'Paket tidak ditemukan.' });
+
+  const [[usage]] = await pool.query(
+    `SELECT
+        (SELECT COUNT(*) FROM tenants WHERE plan = :id) AS "tenantCount",
+        (SELECT COUNT(*) FROM subscriptions WHERE plan_id = :id) AS "subscriptionCount",
+        (SELECT COUNT(*) FROM plan_upgrade_requests WHERE requested_plan = :id OR previous_plan = :id) AS "requestCount"`,
+    { id }
+  );
+  const stillUsed = Number(usage.tenantCount) > 0 || Number(usage.subscriptionCount) > 0 || Number(usage.requestCount) > 0;
+  if (stillUsed) {
+    return res.status(409).json({
+      message: `Paket "${existing.name}" masih dipakai (${usage.tenantCount} tenant, ${usage.subscriptionCount} riwayat langganan, ${usage.requestCount} permintaan upgrade) — nonaktifkan saja (jangan tampil di katalog publik) daripada dihapus.`,
+    });
+  }
+
+  await pool.query(`DELETE FROM plans WHERE id = :id`, { id });
+  await reloadPlansCache();
+  await logAudit({ userId: req.user.id, action: 'delete', entityType: 'plan', oldValues: { id, name: existing.name } });
+
+  res.json({ message: `Paket "${existing.name}" dihapus.` });
 });
 
 // GET /api/platform/tenants — semua tenant + pemakaian ringkas masing-masing.
@@ -588,6 +912,13 @@ const removeIpWhitelist = asyncHandler(async (req, res) => {
 
 module.exports = {
   getStats,
+  getRevenue,
+  getActivity,
+  listPlansAdmin,
+  createPlan,
+  updatePlan,
+  movePlan,
+  deletePlan,
   runPlanExpiryNow,
   listTenants,
   updateTenantStatus,
