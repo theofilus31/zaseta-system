@@ -461,7 +461,7 @@ export default function BatchQrPrintPage() {
                           aria-label={`Pilih ${asset.name}`}
                         />
                       </td>
-                      <td><span className="font-mono text-xs text-ink-700">{asset.asset_code}</span></td>
+                      <td><span className="font-mono text-ink-700">{asset.asset_code}</span></td>
                       <td className="font-medium text-ink-800">{asset.name}</td>
                       <td className="text-ink-500">{asset.category_name || <span className="text-ink-300">—</span>}</td>
                       <td className="text-ink-500">{asset.location_name || <span className="text-ink-300">—</span>}</td>

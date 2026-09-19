@@ -26,12 +26,11 @@
     word-spacing: 0.06em;
   }
 
-  /* Kode aset & nomor seri kini juga Lato (bukan monospace): angka dibuat
-     rata lebarnya dan jarak huruf dilonggarkan supaya 0/O dan 1/l lebih
-     mudah dibedakan. */
+  /* Kode aset & nomor seri kini juga Lato (bukan monospace): cukup angka
+     dibuat rata lebarnya. Jarak huruf sengaja mengikuti teks lain -- versi
+     yang lebih renggang membuat kode tampak seperti font berbeda. */
   .font-mono {
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.04em;
   }
 
   /* Judul lebih gelap; jarak huruf mengikuti `tracking-tight` yang sudah dinetralkan di tailwind.config.js */
