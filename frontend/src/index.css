@@ -20,9 +20,19 @@
   body {
     @apply bg-ink-50 text-ink-700 antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* Lato terasa dempet di ukuran kecil — sedikit renggang antar-huruf &
+       antar-kata, diwariskan ke seluruh teks. Kode/nomor seri (font-mono)
+       dikembalikan ke 0 di bawah karena JetBrains Mono sudah lebar. */
+    letter-spacing: 0.012em;
+    word-spacing: 0.06em;
   }
 
-  /* Judul selalu sedikit lebih rapat & gelap — memberi bobot "produk jadi" */
+  .font-mono {
+    letter-spacing: 0;
+    word-spacing: 0;
+  }
+
+  /* Judul lebih gelap; jarak huruf mengikuti `tracking-tight` yang sudah dinetralkan di tailwind.config.js */
   h1, h2, h3, h4 {
     @apply text-ink-800 tracking-tight;
   }

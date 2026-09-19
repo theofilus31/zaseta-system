@@ -32,6 +32,15 @@ export default {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
 
+      // Lato (terutama varian Black) sudah cukup padat -- `tracking-tight`
+      // bawaan Tailwind (-0.025em) membuat huruf judul saling menempel, jadi
+      // dinetralkan ke 0 supaya semua judul yang memakainya ikut lega.
+      letterSpacing: {
+        tighter: '-0.01em',
+        tight: '0em',
+        normal: '0.012em',
+      },
+
       colors: {
         // ===== HIJAU RMS — warna aksi utama (diperdalam untuk kesan lebih premium) =====
         brand: {
