@@ -237,7 +237,7 @@ export default function ConsumableDetail() {
           </Card>
         </div>
 
-        <div className="space-y-5 lg:sticky lg:top-20">
+        <div className="space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto scrollbar-slim lg:-mx-1 lg:px-1 lg:pb-1">
           <Card className="text-center">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">Stok Saat Ini</p>
             <p className={`text-4xl font-bold tabular-nums ${item.lowStock ? 'text-danger-600' : 'text-ink-900'}`}>
@@ -269,6 +269,39 @@ export default function ConsumableDetail() {
             )}
           </Card>
 
+          {/* Kode QR tepat di bawah kartu stok (bukan paling bawah kolom) --
+              sama seperti Detail Aset: kolom samping ini lebih tinggi dari layar,
+              jadi kartu di ujung bawah baru kelihatan setelah scroll jauh,
+              padahal Cetak Label & Buat Ulang sering dipakai. */}
+          {qr && (
+            <Card className="text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-3">Kode QR Barang</p>
+
+              {qr.image_path ? (
+                <div className="inline-block rounded-2xl border border-ink-200 bg-white p-2.5 shadow-sm">
+                  <img src={qr.image_path} alt={`Kode QR untuk ${item.name}`} className="h-32 w-32" />
+                </div>
+              ) : (
+                <p className="text-xs text-danger-600 py-8">Gambar Kode QR tidak valid.</p>
+              )}
+
+              <p className="text-xs text-ink-400 mt-3">
+                Sudah dipindai <span className="font-semibold text-ink-600 tabular-nums">{qr.scan_count}</span> kali
+              </p>
+
+              <div className={`grid gap-2 mt-3.5 ${canEdit ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <Button to={`/consumables/${id}/qr`} variant="secondary" size="sm" block>
+                  <i className="fas fa-print text-xs" aria-hidden="true" /> Cetak Label
+                </Button>
+                {canEdit && (
+                  <Button variant="secondary" size="sm" block onClick={handleRegenerateQr} loading={regenerating}>
+                    <i className="fas fa-rotate text-xs" aria-hidden="true" /> {regenerating ? 'Membuat…' : 'Buat Ulang'}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
+
           <Card>
             <CardHeader title="Detail Barang" />
             <dl className="space-y-2.5 text-[13px]">
@@ -288,35 +321,6 @@ export default function ConsumableDetail() {
               )}
             </dl>
           </Card>
-
-          {qr && (
-            <Card className="text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-4">Kode QR Barang</p>
-
-              {qr.image_path ? (
-                <div className="inline-block rounded-2xl border border-ink-200 bg-white p-3 shadow-sm">
-                  <img src={qr.image_path} alt={`Kode QR untuk ${item.name}`} className="h-36 w-36" />
-                </div>
-              ) : (
-                <p className="text-xs text-danger-600 py-8">Gambar Kode QR tidak valid.</p>
-              )}
-
-              <p className="text-xs text-ink-400 mt-3.5">
-                Sudah dipindai <span className="font-semibold text-ink-600 tabular-nums">{qr.scan_count}</span> kali
-              </p>
-
-              <div className="flex flex-col gap-2 mt-4">
-                <Button to={`/consumables/${id}/qr`} variant="secondary" size="sm" block>
-                  <i className="fas fa-print text-xs" aria-hidden="true" /> Cetak Label
-                </Button>
-                {canEdit && (
-                  <Button variant="ghost" size="sm" block onClick={handleRegenerateQr} loading={regenerating}>
-                    {regenerating ? 'Membuat ulang…' : 'Buat Ulang Kode QR'}
-                  </Button>
-                )}
-              </div>
-            </Card>
-          )}
         </div>
       </div>
 
