@@ -21,48 +21,99 @@ const Kol = ({ children }) => (
   <code className="rounded border border-ink-200 bg-white px-1 py-0.5 font-mono text-[11px] text-ink-600">{children}</code>
 );
 
-/* Panduan impor aset — dulu satu paragraf panjang; dipecah per topik jadi
-   daftar bernomor supaya bisa dibaca sekilas. Isinya SAMA, hanya disusun ulang. */
-const IMPORT_HELP = (
-  <ol className="list-decimal space-y-2 pl-4 marker:font-semibold marker:text-ink-600">
-    <li>
-      <span className="font-semibold text-ink-700">Kode aset tidak diisi manual.</span>{' '}
-      Server menyusunnya otomatis dari <Kol>location</Kol> + <Kol>sub_location</Kol> + <Kol>category</Kol> + <Kol>id</Kol>.
-    </li>
-    <li>
-      <span className="font-semibold text-ink-700">Kolom wajib:</span>{' '}
-      <Kol>location</Kol> dan <Kol>category</Kol>. Keduanya harus sudah terdaftar dan aktif di sistem
-      (menu Lokasi dan Kode Barang/Aset).
-    </li>
-    <li>
-      <span className="font-semibold text-ink-700">Kolom opsional:</span>{' '}
-      <Kol>sub_location</Kol>, dan <Kol>id</Kol> (nomor urut aset — kosongkan agar diisi otomatis oleh server).
-    </li>
-    <li>
-      <span className="font-semibold text-ink-700">Boleh dikosongkan, dilengkapi belakangan lewat Ubah Aset:</span>{' '}
-      <Kol>name</Kol>, <Kol>asset_type</Kol>, <Kol>condition</Kol>, <Kol>spec_detail</Kol>, <Kol>brand</Kol>,{' '}
-      <Kol>model</Kol>, <Kol>status</Kol>. Kalau kosong: name dibuatkan otomatis, condition default Baik,
-      status default idle.
-    </li>
-    <li>
-      <span className="font-semibold text-ink-700">Pilihan isian:</span>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4">
-        <li><Kol>asset_type</Kol> (kalau diisi) wajib sudah ada di menu Kategori Aset.</li>
-        <li><Kol>condition</Kol>: Baik / Rusak Ringan / Rusak Berat.</li>
-        <li><Kol>status</Kol>: dijual, terjual, dipindah, dipakai, atau idle.</li>
+/* Menu data acuan yang harus terisi SEBELUM impor aset -- baris CSV merujuk
+   Lokasi/Kode Barang/Kategori Aset lewat namanya, jadi harus sudah ada.
+   Tautan hanya bisa diklik kalau pengguna berhak membuka menunya (rute
+   dijaga izin per modul di App.jsx); kalau tidak, cukup teks biasa. */
+const PRASYARAT_MENU = [
+  { module: 'categories', href: '/categories', label: 'Kode Barang/Aset' },
+  { module: 'asset_types', href: '/asset-types', label: 'Kategori Aset' },
+  { module: 'locations', href: '/locations', label: 'Lokasi' },
+];
+
+function PrasyaratImpor({ can }) {
+  return (
+    <div className="mb-3 rounded-lg border border-info-200 bg-info-50 px-3 py-2.5 text-info-800">
+      <p className="font-semibold">
+        <i className="fas fa-circle-info mr-1.5 text-[11px]" aria-hidden="true" />
+        Catatan: isi data acuan dulu sebelum impor
+      </p>
+      <p className="mt-1 text-info-700">
+        Kode Barang/Aset, Kategori Aset (kalau kolom <Kol>asset_type</Kol> diisi), dan Lokasi wajib sudah
+        terdaftar sebelum berkas diunggah. Lengkapi dulu lewat menu berikut — dibuka di tab baru, jadi
+        berkas yang sudah Anda pilih di sini tidak hilang:
+      </p>
+      <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 font-medium">
+        {PRASYARAT_MENU.map((m) => (
+          <li key={m.href}>
+            {can(m.module, 'view') ? (
+              <a
+                href={m.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-brand-700 underline underline-offset-2 hover:text-brand-800"
+              >
+                {m.label}
+                <i className="fas fa-arrow-up-right-from-square text-[9px]" aria-hidden="true" />
+              </a>
+            ) : (
+              <span>{m.label}</span>
+            )}
+          </li>
+        ))}
       </ul>
-    </li>
-    <li>
-      <span className="font-semibold text-ink-700">Khusus status dijual / terjual:</span>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4">
-        <li><Kol>sale_value_net</Kol> wajib kalau status = dijual (angka, tanpa titik/koma).</li>
-        <li><Kol>sold_price</Kol> wajib kalau status = terjual (angka).</li>
-        <li><Kol>sold_date</Kol> opsional (format YYYY-MM-DD).</li>
-        <li>Ketiga kolom ini boleh kosong untuk status dipakai / idle / dipindah.</li>
-      </ul>
-    </li>
-  </ol>
-);
+    </div>
+  );
+}
+
+/* Panduan impor aset — dulu satu paragraf panjang; dipecah per topik jadi daftar
+   bernomor supaya bisa dibaca sekilas. Isinya SAMA, hanya disusun ulang. */
+function AssetImportHelp() {
+  const { can } = useAuth();
+  return (
+    <>
+      <PrasyaratImpor can={can} />
+      <ol className="list-decimal space-y-2 pl-4 marker:font-semibold marker:text-ink-600">
+        <li>
+          <span className="font-semibold text-ink-700">Kode aset tidak diisi manual.</span>{' '}
+          Server menyusunnya otomatis dari <Kol>location</Kol> + <Kol>sub_location</Kol> + <Kol>category</Kol> + <Kol>id</Kol>.
+        </li>
+        <li>
+          <span className="font-semibold text-ink-700">Kolom wajib:</span>{' '}
+          <Kol>location</Kol> dan <Kol>category</Kol>. Keduanya harus sudah terdaftar dan aktif di sistem
+          (menu Lokasi dan Kode Barang/Aset).
+        </li>
+        <li>
+          <span className="font-semibold text-ink-700">Kolom opsional:</span>{' '}
+          <Kol>sub_location</Kol>, dan <Kol>id</Kol> (nomor urut aset — kosongkan agar diisi otomatis oleh server).
+        </li>
+        <li>
+          <span className="font-semibold text-ink-700">Boleh dikosongkan, dilengkapi belakangan lewat Ubah Aset:</span>{' '}
+          <Kol>name</Kol>, <Kol>asset_type</Kol>, <Kol>condition</Kol>, <Kol>spec_detail</Kol>, <Kol>brand</Kol>,{' '}
+          <Kol>model</Kol>, <Kol>status</Kol>. Kalau kosong: name dibuatkan otomatis, condition default Baik,
+          status default idle.
+        </li>
+        <li>
+          <span className="font-semibold text-ink-700">Pilihan isian:</span>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <li><Kol>asset_type</Kol> (kalau diisi) wajib sudah ada di menu Kategori Aset.</li>
+            <li><Kol>condition</Kol>: Baik / Rusak Ringan / Rusak Berat.</li>
+            <li><Kol>status</Kol>: dijual, terjual, dipindah, dipakai, atau idle.</li>
+          </ul>
+        </li>
+        <li>
+          <span className="font-semibold text-ink-700">Khusus status dijual / terjual:</span>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <li><Kol>sale_value_net</Kol> wajib kalau status = dijual (angka, tanpa titik/koma).</li>
+            <li><Kol>sold_price</Kol> wajib kalau status = terjual (angka).</li>
+            <li><Kol>sold_date</Kol> opsional (format YYYY-MM-DD).</li>
+            <li>Ketiga kolom ini boleh kosong untuk status dipakai / idle / dipindah.</li>
+          </ul>
+        </li>
+      </ol>
+    </>
+  );
+}
 
 /**
  * Menjalankan `task` untuk setiap item dengan batas jumlah permintaan yang
@@ -391,7 +442,7 @@ export default function AssetList() {
         <ImportCsvModal
           title="Impor Aset dari CSV"
           expectedColumns={['id', 'location', 'sub_location', 'category', 'name', 'asset_type', 'condition', 'spec_detail', 'brand', 'model', 'status', 'sale_value_net', 'sold_date', 'sold_price']}
-          helpText={IMPORT_HELP}
+          helpText={<AssetImportHelp />}
           sampleRows={[
             ['1', 'HO', '', 'LAPTOP', 'Laptop Marketing 1', 'Elektronik', 'Baik', '1. Intel i5\n2. RAM 8GB\n3. SSD 256GB', 'Dell', 'Latitude 5420', 'dipakai', '', '', ''],
             ['2', 'HO', 'GA', 'MEJA', 'Meja Kerja Staff', 'Furniture', 'Rusak Ringan', '', 'Informa', '-', 'idle', '', '', ''],
