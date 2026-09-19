@@ -58,19 +58,18 @@ function escapeHtml(value) {
  *  aplikasinya, bukan template generik — ditulis ulang sebagai hex karena
  *  email tidak bisa membaca token Tailwind.
  *
- *  Font: system-font stack (bukan Google Fonts). Banyak klien surel utama
- *  (Outlook desktop, sejumlah webmail korporat) memblokir @import/<link>
- *  Google Fonts sama sekali — mengandalkannya berarti sebagian besar
- *  penerima cuma melihat fallback-nya. Stack di bawah otomatis memakai
- *  Segoe UI di Windows, San Francisco di Mac/iOS, dan Roboto di Android:
- *  kesan geometris-modern yang sama seperti Inter (dipakai di aplikasi web),
- *  tanpa bergantung pada font yang mungkin gagal dimuat.
+ *  Font: Lato lebih dulu (sama dengan aplikasi web) tetapi TANPA memuat
+ *  Google Fonts. Banyak klien surel utama (Outlook desktop, sejumlah webmail
+ *  korporat) memblokir @import/<link> Google Fonts sama sekali, jadi Lato
+ *  hanya tampil di penerima yang fontnya terpasang di perangkat; yang lain
+ *  otomatis jatuh ke Segoe UI (Windows), San Francisco (Mac/iOS), atau Roboto
+ *  (Android) — tetap rapi tanpa bergantung pada font yang mungkin gagal dimuat.
  *
  *  Skala ukuran teks dibatasi ke 12/14/16/18/24 — tangga yang sama dipakai
  *  konsisten di semua level (badge, isi, judul), bukan angka acak per elemen.
  * ============================================================================
  */
-const FONT = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;";
+const FONT = "font-family: Lato, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;";
 
 const BRAND_DARK = '#1c6433';
 const BRAND = '#237d3f';
@@ -302,7 +301,7 @@ async function sendNewUserWelcome({ to, name, username, password, loginUrl, tena
           <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Nama Pengguna</td></tr>
           <tr><td style="${FONT} font-size: 18px; font-weight: 700; color: ${BRAND_DARK}; padding-bottom: 16px;">${escapeHtml(username)}</td></tr>
           <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Kata Sandi Sementara</td></tr>
-          <tr><td style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 18px; font-weight: 700; letter-spacing: 1px; color: ${BRAND_DARK};">${escapeHtml(password)}</td></tr>
+          <tr><td style="font-family: Lato, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 1px; color: ${BRAND_DARK};">${escapeHtml(password)}</td></tr>
         </table>
       </td></tr>
     </table>

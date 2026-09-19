@@ -21,15 +21,17 @@
     @apply bg-ink-50 text-ink-700 antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     /* Lato terasa dempet di ukuran kecil — sedikit renggang antar-huruf &
-       antar-kata, diwariskan ke seluruh teks. Kode/nomor seri (font-mono)
-       dikembalikan ke 0 di bawah karena JetBrains Mono sudah lebar. */
+       antar-kata, diwariskan ke seluruh teks. */
     letter-spacing: 0.012em;
     word-spacing: 0.06em;
   }
 
+  /* Kode aset & nomor seri kini juga Lato (bukan monospace): angka dibuat
+     rata lebarnya dan jarak huruf dilonggarkan supaya 0/O dan 1/l lebih
+     mudah dibedakan. */
   .font-mono {
-    letter-spacing: 0;
-    word-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
   }
 
   /* Judul lebih gelap; jarak huruf mengikuti `tracking-tight` yang sudah dinetralkan di tailwind.config.js */

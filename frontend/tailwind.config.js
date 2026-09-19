@@ -29,7 +29,8 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Lato', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        // `font-mono` (kode aset, nomor seri) sengaja ikut Lato -- satu font untuk seluruh aplikasi.
+        mono: ['Lato', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
       },
 
       // Lato (terutama varian Black) sudah cukup padat -- `tracking-tight`
