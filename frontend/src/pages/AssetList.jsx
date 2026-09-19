@@ -15,6 +15,55 @@ import MoveAssetModal from '../components/assets/MoveAssetModal.jsx';
 import { todayLocal } from '../utils/dateLocal.js';
 import SellAssetModal from '../components/assets/SellAssetModal.jsx';
 
+/* Nama kolom CSV di dalam teks panduan — gaya sama dengan chip daftar kolom di
+   atasnya (ImportCsvModal), supaya jelas mana yang nama kolom persis. */
+const Kol = ({ children }) => (
+  <code className="rounded border border-ink-200 bg-white px-1 py-0.5 font-mono text-[11px] text-ink-600">{children}</code>
+);
+
+/* Panduan impor aset — dulu satu paragraf panjang; dipecah per topik jadi
+   daftar bernomor supaya bisa dibaca sekilas. Isinya SAMA, hanya disusun ulang. */
+const IMPORT_HELP = (
+  <ol className="list-decimal space-y-2 pl-4 marker:font-semibold marker:text-ink-600">
+    <li>
+      <span className="font-semibold text-ink-700">Kode aset tidak diisi manual.</span>{' '}
+      Server menyusunnya otomatis dari <Kol>location</Kol> + <Kol>sub_location</Kol> + <Kol>category</Kol> + <Kol>id</Kol>.
+    </li>
+    <li>
+      <span className="font-semibold text-ink-700">Kolom wajib:</span>{' '}
+      <Kol>location</Kol> dan <Kol>category</Kol>. Keduanya harus sudah terdaftar dan aktif di sistem
+      (menu Lokasi dan Kode Barang/Aset).
+    </li>
+    <li>
+      <span className="font-semibold text-ink-700">Kolom opsional:</span>{' '}
+      <Kol>sub_location</Kol>, dan <Kol>id</Kol> (nomor urut aset — kosongkan agar diisi otomatis oleh server).
+    </li>
+    <li>
+      <span className="font-semibold text-ink-700">Boleh dikosongkan, dilengkapi belakangan lewat Ubah Aset:</span>{' '}
+      <Kol>name</Kol>, <Kol>asset_type</Kol>, <Kol>condition</Kol>, <Kol>spec_detail</Kol>, <Kol>brand</Kol>,{' '}
+      <Kol>model</Kol>, <Kol>status</Kol>. Kalau kosong: name dibuatkan otomatis, condition default Baik,
+      status default idle.
+    </li>
+    <li>
+      <span className="font-semibold text-ink-700">Pilihan isian:</span>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+        <li><Kol>asset_type</Kol> (kalau diisi) wajib sudah ada di menu Kategori Aset.</li>
+        <li><Kol>condition</Kol>: Baik / Rusak Ringan / Rusak Berat.</li>
+        <li><Kol>status</Kol>: dijual, terjual, dipindah, dipakai, atau idle.</li>
+      </ul>
+    </li>
+    <li>
+      <span className="font-semibold text-ink-700">Khusus status dijual / terjual:</span>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+        <li><Kol>sale_value_net</Kol> wajib kalau status = dijual (angka, tanpa titik/koma).</li>
+        <li><Kol>sold_price</Kol> wajib kalau status = terjual (angka).</li>
+        <li><Kol>sold_date</Kol> opsional (format YYYY-MM-DD).</li>
+        <li>Ketiga kolom ini boleh kosong untuk status dipakai / idle / dipindah.</li>
+      </ul>
+    </li>
+  </ol>
+);
+
 /**
  * Menjalankan `task` untuk setiap item dengan batas jumlah permintaan yang
  * berjalan bersamaan.
@@ -342,18 +391,7 @@ export default function AssetList() {
         <ImportCsvModal
           title="Impor Aset dari CSV"
           expectedColumns={['id', 'location', 'sub_location', 'category', 'name', 'asset_type', 'condition', 'spec_detail', 'brand', 'model', 'status', 'sale_value_net', 'sold_date', 'sold_price']}
-          helpText={
-            'Kode aset TIDAK diisi manual — server otomatis menyusunnya dari location + sub_location + category + id. ' +
-            'Hanya location dan category yang WAJIB diisi, dan keduanya harus SUDAH terdaftar/aktif di sistem (menu Lokasi & Kode Barang/Aset). ' +
-            'sub_location opsional. id (nomor urut aset) boleh dikosongkan agar diisi otomatis oleh server. ' +
-            'Kolom lain (name, asset_type, condition, spec_detail, brand, model, status) boleh dikosongkan dan dilengkapi belakangan lewat Ubah Aset — ' +
-            'kalau kosong: name dibuatkan otomatis, condition default Baik, status default idle. ' +
-            'asset_type (kalau diisi) wajib sudah ada di menu Kategori Aset. condition diisi Baik / Rusak Ringan / Rusak Berat. ' +
-            'status diisi salah satu: dijual, terjual, dipindah, dipakai, idle. ' +
-            'sale_value_net WAJIB diisi kalau status = dijual (angka, tanpa titik/koma). ' +
-            'sold_price WAJIB diisi kalau status = terjual (angka); sold_date opsional (format YYYY-MM-DD). ' +
-            'Ketiga kolom ini boleh dikosongkan untuk status dipakai/idle/dipindah.'
-          }
+          helpText={IMPORT_HELP}
           sampleRows={[
             ['1', 'HO', '', 'LAPTOP', 'Laptop Marketing 1', 'Elektronik', 'Baik', '1. Intel i5\n2. RAM 8GB\n3. SSD 256GB', 'Dell', 'Latitude 5420', 'dipakai', '', '', ''],
             ['2', 'HO', 'GA', 'MEJA', 'Meja Kerja Staff', 'Furniture', 'Rusak Ringan', '', 'Informa', '-', 'idle', '', '', ''],

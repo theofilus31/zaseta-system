@@ -12,7 +12,9 @@ import { FormError } from './ui/Form.jsx';
  * - expectedColumns   array nama kolom CSV yang diharapkan
  * - sampleRows        contoh baris untuk template yang bisa diunduh
  * - templateFileName  nama berkas saat template diunduh
- * - helpText          keterangan tambahan di bawah daftar kolom (opsional)
+ * - helpText          keterangan tambahan di bawah daftar kolom (opsional) —
+ *                     string biasa, atau elemen React kalau butuh daftar
+ *                     bernomor/penekanan (lihat IMPORT_HELP di AssetList.jsx)
  * - onUpload          async (file) => summaryObject
  * - onImported        dipanggil setelah impor sukses, biasanya untuk reload data
  * - onClose           () => void
@@ -132,7 +134,9 @@ export default function ImportCsvModal({
             </div>
 
             {helpText && (
-              <p className="mt-3 text-xs text-ink-500 leading-relaxed">{helpText}</p>
+              typeof helpText === 'string'
+                ? <p className="mt-3 text-xs text-ink-500 leading-relaxed">{helpText}</p>
+                : <div className="mt-3 text-xs text-ink-500 leading-relaxed">{helpText}</div>
             )}
 
             {sampleRows.length > 0 && (
