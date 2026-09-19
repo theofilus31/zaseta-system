@@ -481,12 +481,45 @@ export default function AssetDetail() {
         </div>
 
         {/* ================= KOLOM SAMPING ================= */}
-        <div className="space-y-5 order-1 lg:order-2 lg:sticky lg:top-20">
+        <div className="space-y-5 order-1 lg:order-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto scrollbar-slim lg:-mx-1 lg:px-1 lg:pb-1">
 
           <Card className="text-center">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-3">Status Saat Ini</p>
             <StatusBadge status={asset.status} size="lg" />
           </Card>
+
+          {/* Kode QR diletakkan tepat di bawah Status (bukan paling bawah kolom) --
+              kolom samping ini lebih tinggi dari layar, jadi kartu di ujung
+              bawahnya baru kelihatan setelah scroll jauh; padahal Cetak Label &
+              Buat Ulang Kode QR sering dipakai. Tombol dipadatkan jadi satu baris. */}
+          {asset.qr && (
+            <Card className="text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-3">Kode QR Aset</p>
+
+              {asset.qr.image_path ? (
+                <div className="inline-block rounded-2xl border border-ink-200 bg-white p-2.5 shadow-sm">
+                  <img src={asset.qr.image_path} alt={`Kode QR untuk ${asset.name}`} className="h-32 w-32" />
+                </div>
+              ) : (
+                <p className="text-xs text-danger-600 py-8">Gambar Kode QR tidak valid.</p>
+              )}
+
+              <p className="text-xs text-ink-400 mt-3">
+                Sudah dipindai <span className="font-semibold text-ink-600 tabular-nums">{asset.qr.scan_count}</span> kali
+              </p>
+
+              <div className={`grid gap-2 mt-3.5 ${can('assets', 'edit') ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <Button to={`/assets/${id}/qr`} variant="secondary" size="sm" block>
+                  <i className="fas fa-print text-xs" aria-hidden="true" /> Cetak Label
+                </Button>
+                {can('assets', 'edit') && (
+                  <Button variant="secondary" size="sm" block onClick={handleRegenerateQr} loading={regenerating}>
+                    <i className="fas fa-rotate text-xs" aria-hidden="true" /> {regenerating ? 'Membuat…' : 'Buat Ulang'}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* ---------- Custody: siapa yang sedang memegang ---------- */}
           <Card>
@@ -567,35 +600,6 @@ export default function AssetDetail() {
               </div>
             )}
           </Card>
-
-          {asset.qr && (
-            <Card className="text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-4">Kode QR Aset</p>
-
-              {asset.qr.image_path ? (
-                <div className="inline-block rounded-2xl border border-ink-200 bg-white p-3 shadow-sm">
-                  <img src={asset.qr.image_path} alt={`Kode QR untuk ${asset.name}`} className="h-36 w-36" />
-                </div>
-              ) : (
-                <p className="text-xs text-danger-600 py-8">Gambar Kode QR tidak valid.</p>
-              )}
-
-              <p className="text-xs text-ink-400 mt-3.5">
-                Sudah dipindai <span className="font-semibold text-ink-600 tabular-nums">{asset.qr.scan_count}</span> kali
-              </p>
-
-              <div className="flex flex-col gap-2 mt-4">
-                <Button to={`/assets/${id}/qr`} variant="secondary" size="sm" block>
-                  <i className="fas fa-print text-xs" aria-hidden="true" /> Cetak Label
-                </Button>
-                {can('assets', 'edit') && (
-                  <Button variant="ghost" size="sm" block onClick={handleRegenerateQr} loading={regenerating}>
-                    {regenerating ? 'Membuat ulang…' : 'Buat Ulang Kode QR'}
-                  </Button>
-                )}
-              </div>
-            </Card>
-          )}
         </div>
       </div>
 
