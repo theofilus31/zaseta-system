@@ -18,7 +18,8 @@ const path = require('path');
  *  Pengaturan) sengaja ditempel di SETIAP kode QR -- aset maupun barang
  *  habis pakai, di semua tenant -- sebagai tanda "dibuat oleh Zaseta",
  *  terlepas dari merek yang tenant pakai di aplikasinya sendiri. File
- *  logonya disalin ke backend/src/assets (bukan dirujuk ke frontend/public)
+ *  logonya (zaseta-logo.png: logo resmi, sudah dipotong rapat ke tepi gambar
+ *  supaya kotak putih penghapus modul di tengah QR sekecil mungkin) disalin ke backend/src/assets (bukan dirujuk ke frontend/public)
  *  supaya backend tidak bergantung pada struktur folder frontend kalau
  *  suatu saat keduanya di-deploy terpisah.
  *
@@ -34,7 +35,7 @@ const path = require('path');
  *  aman diinstal di Windows tanpa compiler (pakai binary prebuilt).
  * ============================================================================
  */
-const LOGO_PATH = path.join(__dirname, '../assets/zaseta-favicon.png');
+const LOGO_PATH = path.join(__dirname, '../assets/zaseta-logo.png');
 const LOGO_DATA_URI = `data:image/png;base64,${fs.readFileSync(LOGO_PATH).toString('base64')}`;
 const BRAND_GREEN = '#2f9c4f'; // brand-500, lihat tailwind.config.js
 
@@ -52,7 +53,7 @@ function buildStyledQr(scanUrl) {
     cornersSquareOptions: { color: BRAND_GREEN, type: 'extra-rounded' },
     cornersDotOptions: { color: BRAND_GREEN, type: 'dot' },
     backgroundOptions: { color: '#ffffff' },
-    imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.4, hideBackgroundDots: true },
+    imageOptions: { crossOrigin: 'anonymous', margin: 2, imageSize: 0.28, hideBackgroundDots: true },
   });
 }
 
