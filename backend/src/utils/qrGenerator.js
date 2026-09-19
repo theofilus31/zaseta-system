@@ -10,9 +10,9 @@ const path = require('path');
  *  GAYA & LOGO DI TENGAH SETIAP KODE QR
  * ============================================================================
  *  Bukan QR polos hitam-putih bawaan lagi -- dibuat "berornamen" (modul
- *  bulat, warna hijau brand, sudut pemandu membulat) dengan logo Zaseta di
- *  tengah, mengikuti contoh gaya yang diminta (referensi: QR gigi hijau
- *  bertitik) -- warna & logonya diganti jadi identitas Zaseta sendiri.
+ *  bulat hitam, sudut pemandu membulat hijau) dengan logo Zaseta di
+ *  tengah, mengikuti contoh gaya yang diminta (referensi: QR gigi
+ *  bertitik) -- logonya diganti jadi identitas Zaseta sendiri, titik QR hitam.
  *
  *  Logo Zaseta SENDIRI (BUKAN logo tenant yang bisa diganti-ganti lewat
  *  Pengaturan) sengaja ditempel di SETIAP kode QR -- aset maupun barang
@@ -37,7 +37,11 @@ const path = require('path');
  */
 const LOGO_PATH = path.join(__dirname, '../assets/zaseta-logo.png');
 const LOGO_DATA_URI = `data:image/png;base64,${fs.readFileSync(LOGO_PATH).toString('base64')}`;
-const BRAND_GREEN = '#2f9c4f'; // brand-500, lihat tailwind.config.js
+// Modul (titik) hitam pekat -- kontras terbaik untuk pemindai & cetak. Tiga kotak
+// besar di sudut (finder pattern) tetap hijau brand (brand-500, lihat
+// tailwind.config.js), dan logo Zaseta di tengah berwarna aslinya.
+const QR_INK = '#000000';
+const CORNER_GREEN = '#2f9c4f';
 
 function buildStyledQr(scanUrl) {
   return new QRCodeStyling({
@@ -49,9 +53,9 @@ function buildStyledQr(scanUrl) {
     image: LOGO_DATA_URI,
     margin: 8,
     qrOptions: { errorCorrectionLevel: 'H' },
-    dotsOptions: { color: BRAND_GREEN, type: 'dots' },
-    cornersSquareOptions: { color: BRAND_GREEN, type: 'extra-rounded' },
-    cornersDotOptions: { color: BRAND_GREEN, type: 'dot' },
+    dotsOptions: { color: QR_INK, type: 'dots' },
+    cornersSquareOptions: { color: CORNER_GREEN, type: 'extra-rounded' },
+    cornersDotOptions: { color: CORNER_GREEN, type: 'dot' },
     backgroundOptions: { color: '#ffffff' },
     imageOptions: { crossOrigin: 'anonymous', margin: 2, imageSize: 0.28, hideBackgroundDots: true },
   });
