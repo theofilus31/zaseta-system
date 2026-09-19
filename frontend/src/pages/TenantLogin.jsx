@@ -252,7 +252,8 @@ export default function TenantLogin() {
             )}
 
             <p className="text-center text-sm text-ink-500 mt-6">
-              Bukan tim {companyName || 'ini'}?{' '}
+              Bukan tim {companyName || 'ini'}?
+              <br />
               <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">
                 Masuk lewat halaman umum
               </Link>
