@@ -139,9 +139,10 @@ export default function TenantLogin() {
               initial={reducedMotion ? undefined : { opacity: 0, y: -12 }}
               animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ delay: 0.15, duration: 0.4 }}
-              className="mb-6 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-white/10 ring-1 ring-inset ring-white/15 backdrop-blur-sm shadow-brand"
+              className="mb-6 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-white ring-4 ring-white/15 shadow-brand"
             >
-              <BrandLogo variant="dark" className="h-8 w-8 object-contain" fallbackClassName="h-14 w-14 text-2xl" />
+              {/* Logo IKON (persegi) -- logo penuh mendatar jadi terlalu kecil di lingkaran ini */}
+              <BrandLogo variant="icon" className="h-16 w-16 object-contain" fallbackClassName="h-24 w-24 text-4xl" />
             </motion.span>
             <motion.h2
               initial={reducedMotion ? undefined : { opacity: 0, y: -12 }}
