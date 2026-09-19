@@ -1,68 +1,71 @@
-const QRCode = require('qrcode');
+const { QRCodeStyling } = require('qr-code-styling/lib/qr-code-styling.common.js');
+const nodeCanvas = require('canvas');
+const { JSDOM } = require('jsdom');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
 const path = require('path');
-const { Jimp } = require('jimp');
 
 /**
  * ============================================================================
- *  LOGO DI TENGAH KODE QR
+ *  GAYA & LOGO DI TENGAH SETIAP KODE QR
  * ============================================================================
- *  Logo Zaseta sendiri (BUKAN logo tenant yang bisa diganti-ganti lewat
- *  Pengaturan) sengaja ditempel di tengah SETIAP kode QR yang dibuat --
- *  aset maupun barang habis pakai, di semua tenant -- sebagai tanda "dibuat
- *  oleh Zaseta", terlepas dari merek yang tenant pakai di aplikasinya
- *  sendiri. File-nya disalin ke backend/src/assets (bukan dirujuk langsung
- *  ke frontend/public) supaya backend tidak bergantung pada struktur folder
- *  frontend kalau suatu saat keduanya di-deploy terpisah.
+ *  Bukan QR polos hitam-putih bawaan lagi -- dibuat "berornamen" (modul
+ *  bulat, warna hijau brand, sudut pemandu membulat) dengan logo Zaseta di
+ *  tengah, mengikuti contoh gaya yang diminta (referensi: QR gigi hijau
+ *  bertitik) -- warna & logonya diganti jadi identitas Zaseta sendiri.
  *
- *  Kode QR punya kapasitas koreksi galat bawaan (bisa tetap terbaca meski
- *  sebagian modulnya tertutup) -- inilah yang dimanfaatkan untuk menaruh
- *  logo di tengah tanpa merusak kemampuan pindainya:
- *   - errorCorrectionLevel dinaikkan ke 'H' (~30% modul boleh rusak/tertutup)
- *     dari 'M' (~15%) sebelumnya -- 'M' TIDAK cukup aman begitu ada logo
- *     menutupi bagian tengah.
- *   - Logo dibatasi ~22% dari lebar QR, dengan bantalan putih di sekelilingnya
- *     (supaya tidak menyatu dengan modul gelap di sekitarnya) -- angka ini
- *     jauh di bawah ambang 30% tadi, menyisakan ruang aman untuk finder
- *     pattern (kotak di 3 sudut) yang sama sekali tidak boleh tertutup.
+ *  Logo Zaseta SENDIRI (BUKAN logo tenant yang bisa diganti-ganti lewat
+ *  Pengaturan) sengaja ditempel di SETIAP kode QR -- aset maupun barang
+ *  habis pakai, di semua tenant -- sebagai tanda "dibuat oleh Zaseta",
+ *  terlepas dari merek yang tenant pakai di aplikasinya sendiri. File
+ *  logonya disalin ke backend/src/assets (bukan dirujuk ke frontend/public)
+ *  supaya backend tidak bergantung pada struktur folder frontend kalau
+ *  suatu saat keduanya di-deploy terpisah.
+ *
+ *  qr-code-styling dipakai (bukan menggambar sendiri lewat jimp seperti
+ *  percobaan sebelumnya) karena sudah punya perhitungan "zona aman" bawaan
+ *  untuk kombinasi gaya-titik + logo di tengah -- errorCorrectionLevel 'H'
+ *  (~30% modul boleh rusak/tertutup, dari 'M' ~15% sebelumnya) supaya kode
+ *  QR tetap terbaca meski sebagian modul di tengah tertutup logo.
+ *
+ *  BUTUH `canvas` (rendering native) & `jsdom` (DOM tiruan) karena
+ *  qr-code-styling aslinya dibuat untuk browser -- keduanya HANYA dipakai
+ *  di sini, lihat README paket itu bagian "Node Support". Sudah dicoba
+ *  aman diinstal di Windows tanpa compiler (pakai binary prebuilt).
  * ============================================================================
  */
 const LOGO_PATH = path.join(__dirname, '../assets/zaseta-favicon.png');
-const LOGO_SIZE_RATIO = 0.22;
-const LOGO_PADDING_RATIO = 1.15; // bantalan putih di sekeliling logo, relatif ke ukuran logo
+const LOGO_DATA_URI = `data:image/png;base64,${fs.readFileSync(LOGO_PATH).toString('base64')}`;
+const BRAND_GREEN = '#2f9c4f'; // brand-500, lihat tailwind.config.js
 
-async function overlayLogo(qrBuffer) {
-  const qrImage = await Jimp.read(qrBuffer);
-  const logoImage = await Jimp.read(LOGO_PATH);
-
-  const qrSize = qrImage.bitmap.width;
-  const logoSize = Math.round(qrSize * LOGO_SIZE_RATIO);
-  logoImage.resize({ w: logoSize, h: logoSize });
-
-  const paddedSize = Math.round(logoSize * LOGO_PADDING_RATIO);
-  const padded = new Jimp({ width: paddedSize, height: paddedSize, color: 0xffffffff });
-  const logoOffset = Math.round((paddedSize - logoSize) / 2);
-  padded.composite(logoImage, logoOffset, logoOffset);
-
-  const center = Math.round((qrSize - paddedSize) / 2);
-  qrImage.composite(padded, center, center);
-
-  return qrImage.getBase64('image/png');
+function buildStyledQr(scanUrl) {
+  return new QRCodeStyling({
+    jsdom: JSDOM,
+    nodeCanvas,
+    width: 320,
+    height: 320,
+    data: scanUrl,
+    image: LOGO_DATA_URI,
+    margin: 8,
+    qrOptions: { errorCorrectionLevel: 'H' },
+    dotsOptions: { color: BRAND_GREEN, type: 'dots' },
+    cornersSquareOptions: { color: BRAND_GREEN, type: 'extra-rounded' },
+    cornersDotOptions: { color: BRAND_GREEN, type: 'dot' },
+    backgroundOptions: { color: '#ffffff' },
+    imageOptions: { crossOrigin: 'anonymous', margin: 6, imageSize: 0.4, hideBackgroundDots: true },
+  });
 }
 
-/** Inti bersama: token unik + data URL gambar QR (berlogo Zaseta di tengah)
-    yang mengarah ke `${prefix}/${code}`. */
+/** Inti bersama: token unik + data URL gambar QR (berornamen + berlogo
+    Zaseta di tengah) yang mengarah ke `${prefix}/${code}`. */
 async function generateQrToken(prefix) {
   const code = uuidv4();
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const scanUrl = `${frontendUrl}${prefix}/${code}`;
 
-  const qrBuffer = await QRCode.toBuffer(scanUrl, {
-    errorCorrectionLevel: 'H',
-    margin: 2,
-    width: 320,
-  });
-  const imageDataUrl = await overlayLogo(qrBuffer);
+  // getRawData mengembalikan Buffer di Node (bukan Blob seperti di browser).
+  const buffer = await buildStyledQr(scanUrl).getRawData('png');
+  const imageDataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
 
   return { code, scanUrl, imageDataUrl };
 }
