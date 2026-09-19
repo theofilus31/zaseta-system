@@ -61,11 +61,6 @@ export const MODULES = [
     description: 'Pengajuan, tinjauan, dan pemenuhan permintaan aset karyawan.',
   },
   {
-    key: 'zecode', label: 'Zecode AI', path: '/zecode', icon: 'fa-robot',
-    group: 'Aset', actions: ['view'],
-    description: 'Asisten AI internal untuk tanya-jawab data sistem.',
-  },
-  {
     key: 'categories', label: 'Kode Barang/Aset', path: '/categories', icon: 'fa-tags',
     group: 'Data Acuan', actions: ACTIONS,
     description: 'Kelompok barang yang menyusun kode aset.',

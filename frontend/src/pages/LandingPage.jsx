@@ -96,8 +96,8 @@ const FEATURES = [
   {
     icon: 'fa-robot',
     tone: 'warning',
-    title: 'Zecode, asisten AI internal',
-    text: 'Tanya data aset, stok, atau permintaan yang tertunda lewat obrolan — tanpa perlu buka banyak menu.',
+    title: 'Zecode, asisten panduan',
+    text: 'Bingung cara memakai sebuah fitur? Tanya Zecode lewat obrolan — jawabannya langsung muncul, tanpa perlu membuka manual.',
   },
 ];
 

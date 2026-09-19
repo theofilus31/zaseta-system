@@ -35,7 +35,6 @@ import ConsumableQRPrintPage from './pages/ConsumableQRPrintPage.jsx';
 import RequestList from './pages/RequestList.jsx';
 import RequestDetail from './pages/RequestDetail.jsx';
 import DepreciationReportPage from './pages/DepreciationReportPage.jsx';
-import ZecodePage from './pages/ZecodePage.jsx';
 import PublicScanPage from './pages/PublicScanPage.jsx';
 import ConsumablePublicScanPage from './pages/ConsumablePublicScanPage.jsx';
 import PublicRequestPage from './pages/PublicRequestPage.jsx';
@@ -148,8 +147,6 @@ export default function App() {
 
         <Route path="/requests" element={<ProtectedRoute module="requests"><RequestList /></ProtectedRoute>} />
         <Route path="/requests/:id" element={<ProtectedRoute module="requests"><RequestDetail /></ProtectedRoute>} />
-
-        <Route path="/zecode" element={<ProtectedRoute module="zecode"><ZecodePage /></ProtectedRoute>} />
 
         <Route path="/reports/depreciation" element={<ProtectedRoute module="reports"><DepreciationReportPage /></ProtectedRoute>} />
 

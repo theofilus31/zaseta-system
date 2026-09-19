@@ -110,9 +110,8 @@ function LayoutShell({ width }) {
       {/* Notifikasi mengambang di pojok kanan atas */}
       <ErrorToast />
 
-      {/* Zecode — tombol mengambang di pojok kanan bawah, tersedia di semua
-          halaman berkerangka (menyembunyikan dirinya sendiri kalau
-          pengguna tidak punya izin zecode.view). */}
+      {/* Zecode — chatbot panduan statis; tombol mengambang di pojok kanan
+          bawah, tersedia di semua halaman berkerangka untuk semua pengguna. */}
       <ZecodeWidget />
     </div>
   );

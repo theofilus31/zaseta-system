@@ -63,10 +63,10 @@ export const navGroups = MODULE_GROUPS.map((group) => ({
    navigasi apa pun di komponen ini. */
 export const navItems = navGroups.flatMap((g) => g.items);
 
-/* Dasbor & Zecode AI disematkan di atas akordeon, bukan ditumpuk sebagai isi
-   kelompok "Aset" — keduanya halaman ringkasan/alat yang dibuka langsung,
-   bukan bagian dari alur kerja aset satu per satu. */
-const PINNED_MODULE_KEYS = ['dashboard', 'zecode'];
+/* Dasbor disematkan di atas akordeon, bukan ditumpuk sebagai isi kelompok
+   "Aset" — halaman ringkasan yang dibuka langsung, bukan bagian dari alur
+   kerja aset satu per satu. */
+const PINNED_MODULE_KEYS = ['dashboard'];
 
 /* Ikon kelompok (gaya lucide-react, dipakai persis seperti pola
    settings-sidebar-accordion) — terpisah dari ikon per-menu (Font Awesome,

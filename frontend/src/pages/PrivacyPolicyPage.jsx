@@ -68,11 +68,6 @@ export default function PrivacyPolicyPage() {
           <p>Kami tidak menjual data Anda. Data dibagikan ke pihak ketiga HANYA sejauh diperlukan Layanan berjalan:</p>
           <ul className="list-disc pl-5 space-y-1.5">
             <li><strong>Penyedia SMTP</strong> — untuk mengirimkan email OTP, notifikasi, dan ringkasan harian atas nama kami.</li>
-            <li>
-              <strong>Google (Gemini API)</strong> — bila Anda memakai asisten Zecode, isi percakapan yang Anda ketik dikirim
-              ke Google untuk diproses dan dijawab. Jangan sertakan data yang sangat sensitif dalam percakapan dengan Zecode
-              kalau Anda tidak ingin data itu diproses pihak ketiga.
-            </li>
             <li><strong>Google Identity Services</strong> — bila Anda memilih masuk/daftar dengan Google, Google memverifikasi identitas Anda sebelum kami membuatkan/mencocokkan akun.</li>
             <li>Sebagaimana diwajibkan hukum yang berlaku (mis. permintaan resmi aparat penegak hukum).</li>
           </ul>

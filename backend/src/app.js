@@ -23,7 +23,6 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const consumableRoutes = require('./routes/consumableRoutes');
 const requestRoutes = require('./routes/requestRoutes');
 const reportRoutes = require('./routes/reportRoutes');
-const zecodeRoutes = require('./routes/zecodeRoutes');
 const billingRoutes = require('./routes/billingRoutes');
 const platformRoutes = require('./routes/platformRoutes');
 const errorHandler = require('./middleware/errorHandler');
@@ -103,7 +102,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/consumables', consumableRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/zecode', zecodeRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/platform', platformRoutes);
 

@@ -34,4 +34,5 @@ migration yang relevan sesuai urutan tanggal di bawah:
 | 21 | `migration_add_asset_requests.sql` | Tambah tabel `asset_requests` — pengajuan, tinjauan, dan pemenuhan permintaan aset karyawan |
 | 22 | `migration_add_token_version.sql` | Tambah kolom `token_version` di users — mencabut token JWT lama seketika saat kata sandi diganti |
 | 23 | `migration_add_password_is_set.sql` | Tambah kolom `password_is_set` di users — akun daftar via Google boleh membuat kata sandi di Profil tanpa kata sandi lama |
+| 24 | `migration_remove_zecode_permission.sql` | Bersihkan baris izin modul 'zecode' (Zecode AI diganti chatbot panduan statis); tabel riwayat obrolan lama tidak dihapus |
 | — | `migration_purge_test_data.sql` | **Opsional & destruktif** — bersih-bersih data uji coba spesifik (bukan bagian dari urutan wajib, baca catatan di dalam filenya sebelum dijalankan) |

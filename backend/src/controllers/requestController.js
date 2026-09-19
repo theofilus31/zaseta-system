@@ -121,10 +121,9 @@ const getRequest = asyncHandler(async (req, res) => {
 // POST /api/requests
 /**
  * Inti dari pengajuan permintaan, dipisah dari handler HTTP-nya supaya bisa
- * dipanggil dari tempat lain — persisnya, dari zecodeController saat Zecode
- * membantu mengajukan permintaan atas nama pengguna (setelah dikonfirmasi
- * pengguna, bukan otomatis). Melempar Error ber-`.status` seperti pola yang
- * sama dipakai performCheckOut di assignmentController.
+ * dipanggil dari tempat lain (mis. formulir permintaan publik di
+ * publicController). Melempar Error ber-`.status` seperti pola yang sama
+ * dipakai performCheckOut di assignmentController.
  */
 async function performCreateRequest({ tenantId, requesterName, department, categoryId, itemName, reason, priority = 'sedang', neededBy, userId, ip }) {
   if (!tenantId) { const err = new Error('Tenant tidak diketahui.'); err.status = 400; throw err; }

@@ -8,8 +8,8 @@ import ErrorToast from './layout/ErrorToast.jsx';
  * ============================================================================
  *  Dipakai oleh SELURUH halaman /platform/* menggantikan Layout.jsx biasa.
  *  Sengaja tanpa BottomTabBar (panel ini tidak dioptimalkan untuk kerja
- *  harian di ponsel) dan tanpa ZecodeWidget (asisten Zecode terikat data
- *  SATU tenant, tidak relevan di layar lintas tenant).
+ *  harian di ponsel) dan tanpa ZecodeWidget (chatbot panduan Zecode
+ *  membahas menu aplikasi tenant, tidak relevan di layar lintas tenant).
  *
  *  `liveLabel` opsional — dipakai Dashboard untuk menunjukkan kapan data
  *  terakhir diambil ulang (lihat PlatformDashboard.jsx). Halaman lain cukup
