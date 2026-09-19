@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useBranding } from '../context/BrandingContext.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import StatCard from '../components/ui/StatCard.jsx';
@@ -28,6 +29,59 @@ const rupiahPenuh = (n) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
 const IconBox = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>;
 const IconAlert = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>;
 const IconPlus = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><path d="M12 5v14M5 12h14" /></svg>;
+
+/* ============================================================
+   SALIN TAUTAN MASUK PERUSAHAAN
+   Tautan /{kode-perusahaan}/login hanya dikirim lewat surel saat
+   pendaftaran; tombol ini membuatnya bisa diambil lagi kapan saja
+   untuk dibagikan ke rekan yang akan dibuatkan akun.
+   ============================================================ */
+async function salinTeks(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    /* navigator.clipboard hanya ada di HTTPS/localhost -- jatuh ke cara lama
+       supaya tetap jalan kalau aplikasi dibuka lewat HTTP biasa. */
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+function CopyTenantLinkButton({ slug }) {
+  const [state, setState] = useState('idle'); // idle | copied | failed
+  const url = `${window.location.origin}/${slug}/login`;
+
+  async function handleCopy() {
+    setState((await salinTeks(url)) ? 'copied' : 'failed');
+    setTimeout(() => setState('idle'), 2500);
+  }
+
+  const label = { idle: 'Salin Tautan Masuk', copied: 'Tautan Tersalin', failed: 'Gagal Menyalin' }[state];
+  const icon = { idle: 'fa-link', copied: 'fa-check', failed: 'fa-triangle-exclamation' }[state];
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      onClick={handleCopy}
+      title={`Salin ${url}`}
+      aria-live="polite"
+    >
+      <i className={`fas ${icon} text-[11px]`} aria-hidden="true" />
+      {label}
+    </Button>
+  );
+}
 
 /* ============================================================
    PERLU PERHATIAN
@@ -342,6 +396,7 @@ function ActivityItem({ entry }) {
    ============================================================ */
 export default function Dashboard() {
   const { user, can } = useAuth();
+  const { tenantSlug } = useBranding();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -405,6 +460,7 @@ export default function Dashboard() {
               <Button to="/assets/new" size="sm"><IconPlus className="h-3.5 w-3.5" /> Tambah Aset</Button>
             )}
             <Button to="/assets" variant="secondary" size="sm">Daftar Aset</Button>
+            {tenantSlug && <CopyTenantLinkButton slug={tenantSlug} />}
           </>
         }
       />

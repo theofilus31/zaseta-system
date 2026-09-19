@@ -133,7 +133,10 @@ const getPublicBranding = asyncHandler(async (req, res) => {
  */
 const getMyBranding = asyncHandler(async (req, res) => {
   const settings = await readSettings(req.user.tenant_id);
-  res.json({ ...toPublicShape(settings), tenantId: req.user.tenant_id });
+  /* tenantSlug: kode perusahaan di tautan masuk khusus (/{slug}/login) --
+     dipakai tombol "Salin Tautan Masuk" di dasbor. */
+  const [[tenant]] = await pool.query(`SELECT slug FROM tenants WHERE id = :id`, { id: req.user.tenant_id });
+  res.json({ ...toPublicShape(settings), tenantId: req.user.tenant_id, tenantSlug: tenant?.slug ?? null });
 });
 
 /**
