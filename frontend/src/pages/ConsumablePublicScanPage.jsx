@@ -87,7 +87,7 @@ export default function ConsumablePublicScanPage() {
   /* ---------- Galat ---------- */
   if (error) {
     return (
-      <ScanShell>
+      <ScanShell branding={user ? undefined : null}>
         <div className="bg-white rounded-2xl border border-ink-200 shadow-raised px-6 py-10 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-danger-50 text-danger-500">
             <i className="fas fa-triangle-exclamation text-xl" aria-hidden="true" />
@@ -102,7 +102,7 @@ export default function ConsumablePublicScanPage() {
   /* ---------- Memuat ---------- */
   if (!item) {
     return (
-      <ScanShell>
+      <ScanShell branding={user ? undefined : null}>
         <div className="bg-white rounded-2xl border border-ink-200 shadow-raised px-6 py-12 text-center">
           <div className="mx-auto mb-4 h-8 w-8 rounded-full border-[3px] border-ink-200 border-t-brand-500 animate-spin" aria-hidden="true" />
           <p className="text-sm text-ink-400">Memuat data barang…</p>
@@ -113,7 +113,7 @@ export default function ConsumablePublicScanPage() {
 
   /* ---------- Berhasil (publik, read-only) ---------- */
   return (
-    <ScanShell>
+    <ScanShell branding={item.branding}>
       <div className="space-y-4">
         <AssetTrackerCard
           topBadge={<StockBadge item={item} />}

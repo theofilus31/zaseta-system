@@ -3,6 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { performCreateRequest } = require('./requestController');
 const { sendContactMessage } = require('../utils/mailer');
+const { getBrandingForTenant } = require('./settingsController');
 const { normalizeSlug, isValidSlugFormat, isReservedSlug } = require('../utils/tenantSlug');
 
 const CONTACT_CATEGORIES = { saran: 'Saran & Kritik', kerjasama: 'Ajak Kerja Sama', lainnya: 'Lainnya' };
@@ -64,7 +65,7 @@ const scanAsset = asyncHandler(async (req, res) => {
   await logAudit({ userId: null, tenantId: asset.tenant_id, action: 'scan', entityType: 'asset', entityId: assetId, ipAddress: req.ip });
 
   const { tenant_id, ...publicAsset } = asset; // tidak perlu ikut terkirim ke klien publik
-  res.json({ ...publicAsset, customFields: customFieldRows });
+  res.json({ ...publicAsset, customFields: customFieldRows, branding: await getBrandingForTenant(asset.tenant_id) });
 });
 
 // GET /api/public/scan-consumable/:code — TANPA AUTH. Menyertakan angka stok
@@ -103,6 +104,7 @@ const scanConsumable = asyncHandler(async (req, res) => {
     currentStock: item.current_stock,
     minStock: item.min_stock,
     lowStock: item.current_stock <= item.min_stock,
+    branding: await getBrandingForTenant(item.tenant_id),
   });
 });
 

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient.js';
 import { parseSpecDetail } from '../utils/specDetail.js';
-import { useBranding, BrandLogo } from '../context/BrandingContext.jsx';
+import { useBranding } from '../context/BrandingContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import ScanActionPanel from '../components/assets/ScanActionPanel.jsx';
 import AssetTrackerCard from '../components/ui/AssetTrackerCard.jsx';
@@ -14,21 +14,64 @@ import AssetTrackerCard from '../components/ui/AssetTrackerCard.jsx';
  * enak dibaca di layar ponsel.
  */
 
+/** Logo penuh (latar terang); kalau belum diunggah dipakai logo ikon, dan
+    kalau itu pun belum ada baru huruf awal perusahaan. Untuk merek dari
+    sesi (`ctx`) URL dibangun konteks; untuk merek hasil pindai dibangun di sini. */
+function ScanLogo({ branding, ctx }) {
+  const variant = branding.logos?.light ? 'light' : branding.logos?.icon ? 'icon' : null;
+  const label = branding.companyName || branding.appName;
+
+  let url = null;
+  if (variant) {
+    if (branding === ctx) {
+      url = ctx.logoUrl(variant);
+    } else {
+      const base = axiosClient.defaults.baseURL?.replace(/\/$/, '') || '';
+      url = `${base}/public/branding/logo/${variant}?v=${branding.logoVersion}&tenantId=${branding.tenantId}`;
+    }
+  }
+
+  if (url) return <img src={url} alt={label} className="h-20 w-auto object-contain" />;
+
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      className="inline-flex h-20 w-20 items-center justify-center rounded-xl bg-brand-500 text-3xl font-bold text-white"
+    >
+      {(label || '?').trim()[0]?.toUpperCase() || '?'}
+    </span>
+  );
+}
+
 /** Kerangka bersama untuk semua keadaan (memuat, galat, berhasil). Diekspor
     supaya ConsumablePublicScanPage.jsx (pindai barcode barang habis pakai)
-    ikut memakai kop/gaya yang sama persis, bukan duplikat. */
-export function ScanShell({ children }) {
-  const { companyName } = useBranding();
+    ikut memakai kop/gaya yang sama persis, bukan duplikat.
+
+    `branding` menentukan merek yang tampil:
+    - objek (dari respons /public/scan*)  -> merek tenant PEMILIK aset itu.
+      Yang memindai tidak punya sesi, jadi konteks merek global cuma menebak
+      tenant aktif pertama -- bisa salah tenant.
+    - null                                -> belum tahu (memuat/galat): tanpa logo,
+      supaya logo tenant lain tidak sempat berkedip.
+    - undefined (bawaan)                  -> merek sesi pengguna yang login
+      (mode petugas). */
+export function ScanShell({ children, branding }) {
+  const ctx = useBranding();
+  const b = branding === undefined ? ctx : branding;
+  const companyName = b?.companyName || '';
+
+  useEffect(() => {
+    if (branding) {
+      document.title = b.companyName ? `${b.appName} — ${b.companyName}` : b.appName;
+    }
+  }, [branding, b]);
 
   return (
     <div className="min-h-dvh bg-ink-100 dot-grid flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="flex justify-center mb-8">
-          <BrandLogo
-            variant="light"
-            className="h-20 w-auto object-contain"
-            fallbackClassName="h-20 w-20 text-3xl"
-          />
+        <div className="flex justify-center mb-8 h-20">
+          {b && <ScanLogo branding={b} ctx={ctx} />}
         </div>
 
         {children}
@@ -142,7 +185,7 @@ export default function PublicScanPage() {
   /* ---------- Galat ---------- */
   if (error) {
     return (
-      <ScanShell>
+      <ScanShell branding={user ? undefined : null}>
         <div className="bg-white rounded-2xl border border-ink-200 shadow-raised px-6 py-10 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-danger-50 text-danger-500">
             <i className="fas fa-triangle-exclamation text-xl" aria-hidden="true" />
@@ -160,7 +203,7 @@ export default function PublicScanPage() {
   /* ---------- Memuat ---------- */
   if (!asset) {
     return (
-      <ScanShell>
+      <ScanShell branding={user ? undefined : null}>
         <div className="bg-white rounded-2xl border border-ink-200 shadow-raised px-6 py-12 text-center">
           <div className="mx-auto mb-4 h-8 w-8 rounded-full border-[3px] border-ink-200 border-t-brand-500 animate-spin" aria-hidden="true" />
           <p className="text-sm text-ink-400">Memuat data aset…</p>
@@ -176,7 +219,7 @@ export default function PublicScanPage() {
     : null;
 
   return (
-    <ScanShell>
+    <ScanShell branding={asset.branding}>
       <div className="space-y-4">
         <AssetTrackerCard
           status={asset.status}

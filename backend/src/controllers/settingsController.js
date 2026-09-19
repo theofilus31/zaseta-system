@@ -289,8 +289,20 @@ const deleteLogo = asyncHandler(async (req, res) => {
   res.json({ message: 'Logo dihapus.', ...toPublicShape(settings) });
 });
 
+/**
+ * Merek satu tenant TERTENTU (bentuk sama dengan getPublicBranding, plus
+ * tenantId). Dipakai halaman pindai publik: yang memindai label tidak punya
+ * sesi, jadi merek yang ditampilkan harus mengikuti tenant PEMILIK aset itu,
+ * bukan tebakan resolvePublicTenantId().
+ */
+async function getBrandingForTenant(tenantId) {
+  const settings = await readSettings(tenantId);
+  return { ...toPublicShape(settings), tenantId };
+}
+
 module.exports = {
   LOGO_VARIANTS,
+  getBrandingForTenant,
   getPublicBranding, getMyBranding, getLogo,
   getSettings, updateSettings, uploadLogo, deleteLogo,
 };
