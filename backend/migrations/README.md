@@ -33,4 +33,5 @@ migration yang relevan sesuai urutan tanggal di bawah:
 | 20 | `migration_add_consumables.sql` | Tambah tabel `consumables` & `consumable_transactions` — stok barang habis pakai (ATK, kebersihan, dst.) |
 | 21 | `migration_add_asset_requests.sql` | Tambah tabel `asset_requests` — pengajuan, tinjauan, dan pemenuhan permintaan aset karyawan |
 | 22 | `migration_add_token_version.sql` | Tambah kolom `token_version` di users — mencabut token JWT lama seketika saat kata sandi diganti |
+| 23 | `migration_add_password_is_set.sql` | Tambah kolom `password_is_set` di users — akun daftar via Google boleh membuat kata sandi di Profil tanpa kata sandi lama |
 | — | `migration_purge_test_data.sql` | **Opsional & destruktif** — bersih-bersih data uji coba spesifik (bukan bagian dari urutan wajib, baca catatan di dalam filenya sebelum dijalankan) |

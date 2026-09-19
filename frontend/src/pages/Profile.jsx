@@ -37,6 +37,9 @@ export default function Profile() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  /* false = akun daftar lewat Google yang belum pernah membuat kata sandi:
+     tidak ada "kata sandi saat ini" untuk diisi. */
+  const [passwordIsSet, setPasswordIsSet] = useState(true);
 
   /* Mengubah nama pengguna termasuk menyunting data akun, jadi mengikuti izin
      menu Manajemen Pengguna — bukan lagi semata-mata karena berperan admin. */
@@ -67,6 +70,7 @@ export default function Profile() {
           currentPassword: '', newPassword: '', confirmPassword: '',
         }));
         setNewUsername(data.username || '');
+        setPasswordIsSet(data.passwordIsSet !== false);
       })
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat profil.'));
   }
@@ -95,7 +99,7 @@ export default function Profile() {
 
     setSaving(true);
     const payload = { name: form.name };
-    if (form.currentPassword || form.newPassword) {
+    if (form.newPassword || (passwordIsSet && form.currentPassword)) {
       payload.currentPassword = form.currentPassword;
       payload.newPassword = form.newPassword;
     }
@@ -113,7 +117,8 @@ export default function Profile() {
         localStorage.setItem('token', res.data.token);
       }
       setForm((f) => ({ ...f, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      pushSuccess('Profil berhasil diperbarui.');
+      if (payload.newPassword) setPasswordIsSet(true);
+      pushSuccess(!passwordIsSet && payload.newPassword ? 'Kata sandi berhasil dibuat. Sekarang Anda bisa masuk dengan kata sandi maupun Google.' : 'Profil berhasil diperbarui.');
     } catch (err) {
       pushError(err.response?.data?.message || 'Gagal menyimpan profil.');
     } finally {
@@ -353,17 +358,21 @@ export default function Profile() {
 
         <Card>
           <CardHeader
-            title="Ganti Kata Sandi"
-            description="Kosongkan seluruhnya jika tidak ingin mengganti kata sandi."
+            title={passwordIsSet ? 'Ganti Kata Sandi' : 'Buat Kata Sandi'}
+            description={passwordIsSet
+              ? 'Kosongkan seluruhnya jika tidak ingin mengganti kata sandi.'
+              : 'Akun ini didaftarkan lewat Google, jadi belum punya kata sandi. Buat satu bila ingin bisa masuk tanpa Google — kosongkan jika tidak perlu.'}
             icon={(p) => <i {...p} className="fas fa-key text-xs" />}
           />
           <div className="space-y-4">
-            <PasswordInput
-              label="Kata Sandi Saat Ini" name="currentPassword"
-              value={form.currentPassword} onChange={handleChange}
-              autoComplete="current-password"
-              placeholder="Masukkan kata sandi saat ini"
-            />
+            {passwordIsSet && (
+              <PasswordInput
+                label="Kata Sandi Saat Ini" name="currentPassword"
+                value={form.currentPassword} onChange={handleChange}
+                autoComplete="current-password"
+                placeholder="Masukkan kata sandi saat ini"
+              />
+            )}
             <PasswordInput
               label="Kata Sandi Baru" name="newPassword"
               value={form.newPassword} onChange={handleChange}

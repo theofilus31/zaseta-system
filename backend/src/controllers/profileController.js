@@ -13,7 +13,7 @@ const MAX_OTP_ATTEMPTS = 5;
 // GET /api/profile
 const getProfile = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT u.id, u.username, u.name, u.email, u.status, r.name AS role
+    `SELECT u.id, u.username, u.name, u.email, u.status, u.password_is_set AS "passwordIsSet", r.name AS role
      FROM users u JOIN roles r ON r.id = u.role_id
      WHERE u.id = :id AND u.deleted_at IS NULL`,
     { id: req.user.id }
@@ -40,12 +40,18 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
 
   if (newPassword) {
-    if (!currentPassword) {
-      return res.status(400).json({ message: 'Kata sandi saat ini wajib diisi untuk mengganti kata sandi.' });
-    }
-    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Kata sandi saat ini salah.' });
+    /* Akun yang didaftarkan lewat Google belum pernah punya kata sandi
+       (password_hash-nya acak & tak diketahui) -- tidak ada "kata sandi saat
+       ini" untuk diminta, jadi langsung boleh membuatnya. Setelah itu
+       password_is_set jadi TRUE dan aturan biasa berlaku. */
+    if (user.password_is_set) {
+      if (!currentPassword) {
+        return res.status(400).json({ message: 'Kata sandi saat ini wajib diisi untuk mengganti kata sandi.' });
+      }
+      const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Kata sandi saat ini salah.' });
+      }
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ message: 'Kata sandi minimal 8 karakter.' });
@@ -55,7 +61,7 @@ const updateProfile = asyncHandler(async (req, res) => {
        tidak berlaku — lihat middleware/auth.js. Sesi yang sedang berjalan
        tetap mulus karena token baru diterbitkan di respons ini juga. */
     await pool.query(
-      `UPDATE users SET password_hash = :passwordHash, token_version = token_version + 1 WHERE id = :id`,
+      `UPDATE users SET password_hash = :passwordHash, password_is_set = TRUE, token_version = token_version + 1 WHERE id = :id`,
       { id: userId, passwordHash }
     );
     await logAudit({ userId, action: 'update', entityType: 'user_password', entityId: userId });
@@ -69,7 +75,7 @@ const updateProfile = asyncHandler(async (req, res) => {
   await logAudit({ userId, action: 'update', entityType: 'user_profile', entityId: userId });
 
   const [updated] = await pool.query(
-    `SELECT u.id, u.username, u.name, u.email, u.status, u.token_version, r.name AS role
+    `SELECT u.id, u.username, u.name, u.email, u.status, u.token_version, u.password_is_set AS "passwordIsSet", r.name AS role
      FROM users u JOIN roles r ON r.id = u.role_id
      WHERE u.id = :id`,
     { id: userId }

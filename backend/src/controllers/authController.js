@@ -229,7 +229,7 @@ const resetPassword = asyncHandler(async (req, res) => {
      perangkat lain (mis. kata sandi bocor, itulah sebabnya direset) langsung
      tidak berlaku — sama seperti alur ganti kata sandi di halaman Profil. */
   await pool.query(
-    `UPDATE users SET password_hash = :passwordHash, token_version = token_version + 1 WHERE id = :id`,
+    `UPDATE users SET password_hash = :passwordHash, password_is_set = TRUE, token_version = token_version + 1 WHERE id = :id`,
     { id: user.id, passwordHash }
   );
   await pool.query(`DELETE FROM password_reset_otps WHERE user_id = :userId`, { userId: user.id });
@@ -772,8 +772,8 @@ const googleSignup = asyncHandler(async (req, res) => {
     tenantId = tenantResult.insertId;
 
     const [userResult] = await conn.query(
-      `INSERT INTO users (tenant_id, username, role_id, name, email, password_hash, google_id, status, email_verified_at)
-       VALUES (:tenantId, :username, :roleId, :name, :email, :passwordHash, :googleId, 'active', NOW())
+      `INSERT INTO users (tenant_id, username, role_id, name, email, password_hash, password_is_set, google_id, status, email_verified_at)
+       VALUES (:tenantId, :username, :roleId, :name, :email, :passwordHash, FALSE, :googleId, 'active', NOW())
        RETURNING id`,
       { tenantId, username: finalUsername, roleId, name: profile.name, email: profile.email, passwordHash, googleId: profile.googleId }
     );

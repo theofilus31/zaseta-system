@@ -87,6 +87,7 @@ CREATE TABLE users (
     email               VARCHAR(150) NOT NULL,
     password_hash       VARCHAR(255) NOT NULL,
     google_id           VARCHAR(255) NULL,  -- klaim "sub" token Google — lihat migration_add_google_oauth.sql
+    password_is_set     BOOLEAN NOT NULL DEFAULT TRUE,  -- FALSE = akun daftar via Google, belum punya kata sandi — lihat migration_add_password_is_set.sql
     status              VARCHAR(20) NOT NULL DEFAULT 'active'
                             CHECK (status IN ('active','inactive')),
     token_version       INT NOT NULL DEFAULT 1,
