@@ -1,4 +1,6 @@
 const { test } = require('node:test');
+// updateProfile menerbitkan JWT baru; di CI tidak ada .env, jadi beri rahasia uji.
+process.env.JWT_SECRET ||= 'test-only-jwt-secret';
 const assert = require('node:assert/strict');
 require('./helpers/teardown');
 require('./helpers/setup');
