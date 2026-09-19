@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, Package, QrCode } from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
+import StyledQrCode from './StyledQrCode.jsx';
 import { cn } from '../../utils/cn.js';
 import StatusBadge from './StatusBadge.jsx';
 
@@ -90,7 +90,7 @@ export default function AssetTrackerCard({
 
           <motion.div variants={itemVariants} className="shrink-0 rounded-lg border border-ink-200 p-1">
             {qrValue ? (
-              <QRCodeCanvas value={qrValue} size={56} bgColor="transparent" fgColor="#1c2534" />
+              <StyledQrCode value={qrValue} size={72} />
             ) : (
               <div className="flex h-14 w-14 items-center justify-center rounded-md bg-ink-100">
                 <QrCode className="h-6 w-6 text-ink-400" aria-hidden="true" />
