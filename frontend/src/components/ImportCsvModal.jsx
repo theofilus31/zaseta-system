@@ -10,7 +10,10 @@ import { FormError } from './ui/Form.jsx';
  * Props:
  * - title             judul modal
  * - expectedColumns   array nama kolom CSV yang diharapkan
- * - sampleRows        contoh baris untuk template yang bisa diunduh
+ * - sampleRows        contoh baris yang DITAMPILKAN di popup sebagai panduan
+ *                     pengisian. Template yang diunduh hanya berisi header —
+ *                     contoh ini sengaja tidak ikut di berkas, supaya tidak
+ *                     ada baris contoh yang tak sengaja ikut terimpor.
  * - templateFileName  nama berkas saat template diunduh
  * - helpText          keterangan tambahan di bawah daftar kolom (opsional) —
  *                     string biasa, atau elemen React kalau butuh daftar
@@ -55,8 +58,7 @@ export default function ImportCsvModal({
   }
 
   function handleDownloadTemplate() {
-    const lines = [expectedColumns.join(',')];
-    for (const row of sampleRows) lines.push(row.map(escapeCsvCell).join(','));
+    const lines = [expectedColumns.map(escapeCsvCell).join(',')];
 
     //  (BOM) di depan supaya Excel membaca UTF-8 dengan benar.
     // Ditulis sebagai escape, bukan karakter mentah, agar tidak hilang tanpa
@@ -133,6 +135,12 @@ export default function ImportCsvModal({
               ))}
             </div>
 
+            <p className="mt-3 text-xs text-ink-500 leading-relaxed">
+              <span className="font-semibold text-ink-700">Cara memakai template:</span>{' '}
+              unduh template (hanya berisi baris header), isi data mulai dari baris ke-2 tanpa mengubah
+              atau menghapus baris header, lalu simpan sebagai CSV dan unggah di bawah.
+            </p>
+
             {helpText && (
               typeof helpText === 'string'
                 ? <p className="mt-3 text-xs text-ink-500 leading-relaxed">{helpText}</p>
@@ -140,17 +148,43 @@ export default function ImportCsvModal({
             )}
 
             {sampleRows.length > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={handleDownloadTemplate}
-                className="mt-3 -ml-2 !text-brand-600 hover:!bg-brand-50"
-              >
-                <i className="fas fa-download text-[10px]" aria-hidden="true" />
-                Unduh Template CSV
-              </Button>
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-ink-700 mb-1.5">Contoh pengisian</p>
+                <div className="overflow-x-auto scrollbar-slim rounded-lg border border-ink-200 bg-white">
+                  <table className="w-full text-[11px] text-ink-600">
+                    <thead>
+                      <tr className="bg-ink-100 text-ink-500">
+                        {expectedColumns.map((col) => (
+                          <th key={col} className="whitespace-nowrap px-2 py-1.5 text-left font-semibold">{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-ink-100">
+                      {sampleRows.map((row, i) => (
+                        <tr key={i}>
+                          {expectedColumns.map((col, j) => (
+                            <td key={col} className="whitespace-nowrap px-2 py-1.5">
+                              {String(row[j] ?? '').replace(/\n/g, ' · ') || <span className="text-ink-300">(kosong)</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={handleDownloadTemplate}
+              className="mt-3 -ml-2 !text-brand-600 hover:!bg-brand-50"
+            >
+              <i className="fas fa-download text-[10px]" aria-hidden="true" />
+              Unduh Template CSV (header saja)
+            </Button>
           </div>
 
           {/* Pemilih berkas */}

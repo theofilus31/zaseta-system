@@ -97,6 +97,10 @@ function AssetImportHelp() {
           <span className="font-semibold text-ink-700">Pilihan isian:</span>
           <ul className="mt-1 list-disc space-y-0.5 pl-4">
             <li><Kol>asset_type</Kol> (kalau diisi) wajib sudah ada di menu Kategori Aset.</li>
+            <li>
+              <Kol>spec_detail</Kol>: boleh beberapa baris — di Excel tekan Alt+Enter untuk baris baru dalam satu sel
+              (contoh: 1. Intel i5, 2. RAM 8GB, 3. SSD 256GB).
+            </li>
             <li><Kol>condition</Kol>: Baik / Rusak Ringan / Rusak Berat.</li>
             <li><Kol>status</Kol>: dijual, terjual, dipindah, dipakai, atau idle.</li>
           </ul>
