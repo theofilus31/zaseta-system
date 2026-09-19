@@ -70,7 +70,7 @@ function escapeHtml(value) {
  *  konsisten di semua level (badge, isi, judul), bukan angka acak per elemen.
  * ============================================================================
  */
-const FONT = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;";
+const FONT = "font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;";
 
 const BRAND_DARK = '#1c6433';
 const BRAND = '#237d3f';
@@ -302,7 +302,7 @@ async function sendNewUserWelcome({ to, name, username, password, loginUrl, tena
           <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Nama Pengguna</td></tr>
           <tr><td style="${FONT} font-size: 18px; font-weight: 700; color: ${BRAND_DARK}; padding-bottom: 16px;">${escapeHtml(username)}</td></tr>
           <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Kata Sandi Sementara</td></tr>
-          <tr><td style="font-family: 'JetBrains Mono', Consolas, monospace; font-size: 18px; font-weight: 700; letter-spacing: 1px; color: ${BRAND_DARK};">${escapeHtml(password)}</td></tr>
+          <tr><td style="font-family: Consolas, 'Courier New', monospace; font-size: 18px; font-weight: 700; letter-spacing: 1px; color: ${BRAND_DARK};">${escapeHtml(password)}</td></tr>
         </table>
       </td></tr>
     </table>

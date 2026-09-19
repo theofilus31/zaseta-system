@@ -23,7 +23,7 @@ export default function QrLabelDesign({ asset, sizeCm }) {
         alignItems: 'center',
         justifyContent: 'center',
         padding: `${padding}cm`,
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: "'Plus Jakarta Sans', Arial, sans-serif",
         /* Hitam pekat eksplisit -- tanpa ini teks label mewarisi warna teks isi
            aplikasi (abu-abu tua ink-700), jadi tercetak keabu-abuan. */
         color: '#000',

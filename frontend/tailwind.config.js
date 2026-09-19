@@ -28,8 +28,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Lato', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        /* Sengaja BUKAN monospace: kelas font-mono (kode aset, nomor seri, dst.,
+           ~70 pemakaian) ikut font utama atas permintaan satu keluarga font. */
+        mono: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
       },
 
       colors: {
