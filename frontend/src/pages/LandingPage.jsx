@@ -338,16 +338,26 @@ function DashboardMockup() {
   );
 }
 
-/* `left` sengaja tidak terlalu negatif -- kolom kiri (teks "Data terkunci...")
-   dan kolom kanan (mockup ini) dipisahkan celah TETAP (gap-14 = 56px) begitu
-   lebar layar mencapai `lg` dan seterusnya (container dibatasi max-w-6xl,
-   jadi celahnya tidak ikut melebar lagi di layar yang lebih lebar dari itu).
-   Offset yang terlalu jauh ke kiri membuat ikon ini menabrak teks kolom kiri
-   persis di titik itu -- pernah ketahuan (lihat riwayat commit). */
+/* Posisi tiap ikon dipilih supaya AMAN dari dua batasan sekaligus:
+   1. Tidak menabrak gembok pusat (lingkaran ~64px, kira-kira menempati x
+      antara -34..+30 dari titik asal) -- ikon yang berbagi baris vertikal
+      yang sama dengan gembok (top mendekati -34..+30) WAJIB berjarak jauh
+      ke kiri (left sangat negatif) supaya tidak tertindih olehnya.
+   2. Tidak menabrak teks "Data terkunci..." di kolom kiri -- kolom kiri &
+      kanan dipisahkan celah TETAP (gap-14 = 56px) begitu lebar layar >= lg
+      (tidak ikut melebar lagi di layar lebih lebar karena container
+      dibatasi max-w-6xl), jadi `left` tidak boleh sangat negatif KALAU
+      posisi vertikalnya (top) kebetulan sebaris dengan teks itu.
+   Kedua batasan itu SALING BERTABRAKAN kalau top-nya sebaris dengan
+   gembok (lihat riwayat commit -- video sempat ditaruh di situ). Solusinya:
+   susun 3 ikon berjenjang ke BAWAH gembok (bukan sejajar/di sampingnya),
+   supaya masing-masing bebas menjauh ke kiri tanpa menabrak gembok, DAN
+   baris tempat teks itu berada dilewati sama sekali (tidak ada ikon yang
+   sebaris dengannya). */
 const ORBIT_ASSETS = [
-  { icon: 'fa-laptop', bg: 'bg-info-600', left: -50, top: -78, float: 2.6 },
-  { icon: 'fa-video', bg: 'bg-accent-600', left: -60, top: 2, float: 3.1 },
-  { icon: 'fa-box', bg: 'bg-warning-600', left: -22, top: 66, float: 2.9 },
+  { icon: 'fa-laptop', bg: 'bg-info-600', left: -96, top: -78, float: 2.6 },
+  { icon: 'fa-video', bg: 'bg-accent-600', left: -70, top: 44, float: 3.1 },
+  { icon: 'fa-box', bg: 'bg-warning-600', left: -66, top: 96, float: 2.9 },
 ];
 
 /**
