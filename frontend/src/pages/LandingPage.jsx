@@ -315,12 +315,13 @@ function DashboardMockup() {
           lihat fetch tenantCount di atas. Disembunyikan sampai angkanya
           datang, supaya tidak sempat menampilkan angka kosong/salah. */}
       {tenantCount !== null && (
-        <div className="absolute -top-9 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-brand-500/40 bg-brand-50 px-3 py-2 shadow-[0_14px_30px_-12px_rgba(35,125,63,.35),0_0_0_1px_rgba(47,156,79,.08)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-3.5 sm:py-2.5">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-brand-600 text-white sm:h-[30px] sm:w-[30px]">
-            <i className="fas fa-building text-xs" aria-hidden="true" />
+        <div className="absolute -top-9 -right-2 flex items-center gap-2.5 whitespace-nowrap rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 px-3.5 py-2.5 shadow-[0_18px_36px_-10px_rgba(35,125,63,.55),0_0_0_1px_rgba(47,156,79,.2)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-4 sm:py-3">
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white/15 text-white sm:h-9 sm:w-9">
+            <i className="fas fa-building text-sm" aria-hidden="true" />
+            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-white motion-safe:animate-badge-pulse" aria-hidden="true" />
           </span>
-          <span className="text-[11px] font-extrabold text-ink-800 sm:text-[13px]">
-            <b className="font-black text-brand-600">{tenantCount}</b> perusahaan bergabung
+          <span className="text-[11px] font-black uppercase tracking-wide text-white sm:text-[13px]">
+            <b className="text-[16px] sm:text-[18px]">{tenantCount}</b> Sudah Bergabung
           </span>
         </div>
       )}
