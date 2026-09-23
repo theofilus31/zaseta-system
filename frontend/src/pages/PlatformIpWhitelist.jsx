@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -42,7 +42,7 @@ function AddIpModal({ myIp, onClose, onAdded }) {
     }
     setSaving(true);
     try {
-      await axiosClient.post('/platform/ip-whitelist', { ipAddress: ipAddress.trim(), label: label.trim() || undefined });
+      await platformAxiosClient.post('/platform/ip-whitelist', { ipAddress: ipAddress.trim(), label: label.trim() || undefined });
       onAdded(`Alamat IP ${ipAddress.trim()} ditambahkan ke daftar putih.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal menambahkan alamat IP.');
@@ -93,7 +93,7 @@ export default function PlatformIpWhitelist() {
   const [busyId, setBusyId] = useState(null);
 
   function load() {
-    axiosClient.get('/platform/ip-whitelist')
+    platformAxiosClient.get('/platform/ip-whitelist')
       .then((res) => { setWhitelist(res.data.whitelist); setMyIp(res.data.myIp); })
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat daftar putih IP.'));
   }
@@ -105,7 +105,7 @@ export default function PlatformIpWhitelist() {
   async function quickAddMyIp() {
     setBusyId('my-ip');
     try {
-      await axiosClient.post('/platform/ip-whitelist', { ipAddress: myIp, label: 'Ditambahkan otomatis dari halaman ini' });
+      await platformAxiosClient.post('/platform/ip-whitelist', { ipAddress: myIp, label: 'Ditambahkan otomatis dari halaman ini' });
       pushSuccess(`IP Anda (${myIp}) ditambahkan ke daftar putih.`);
       load();
     } catch (err) {
@@ -119,7 +119,7 @@ export default function PlatformIpWhitelist() {
     if (!confirm(`Hapus ${entry.ipAddress} dari daftar putih? Alamat ini akan kembali tunduk ke pembatas laju biasa.`)) return;
     setBusyId(entry.id);
     try {
-      await axiosClient.delete(`/platform/ip-whitelist/${entry.id}`);
+      await platformAxiosClient.delete(`/platform/ip-whitelist/${entry.id}`);
       pushSuccess(`${entry.ipAddress} dihapus dari daftar putih.`);
       load();
     } catch (err) {

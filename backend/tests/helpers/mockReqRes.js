@@ -4,8 +4,18 @@
  * Express + autentikasi JWT sungguhan segala. `res` menampung status/body
  * yang dikirim supaya bisa diperiksa lewat assert.
  */
+// `platformAdmin` ikut disertakan (bukan cuma `user`) supaya satu helper yang
+// sama bisa dipakai memanggil controller tenant (authenticate -> req.user)
+// MAUPUN controller admin platform (authenticatePlatform -> req.platformAdmin,
+// lihat platformController.js sejak migration_separate_platform_admins.sql)
+// tanpa test perlu tahu bedanya -- controller yang dipanggil cuma membaca
+// field yang relevan untuknya, field yang satunya diam saja tidak dipakai.
 function mockReq({ tenantId, userId = 1, body = {}, params = {}, query = {} } = {}) {
-  return { user: { id: userId, tenant_id: tenantId, name: 'Uji', email: 'uji@example.test' }, body, params, query, ip: '127.0.0.1' };
+  return {
+    user: { id: userId, tenant_id: tenantId, name: 'Uji', email: 'uji@example.test' },
+    platformAdmin: { id: userId, name: 'Uji Admin Platform', email: 'admin-uji@example.test' },
+    body, params, query, ip: '127.0.0.1',
+  };
 }
 
 function mockRes() {

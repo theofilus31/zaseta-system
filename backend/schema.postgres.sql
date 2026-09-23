@@ -82,7 +82,6 @@ CREATE TABLE users (
     tenant_id           BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     username            VARCHAR(50) NOT NULL,
     role_id             BIGINT NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
-    is_platform_admin   BOOLEAN NOT NULL DEFAULT FALSE,   -- billing Fase 4 — akses panel lintas tenant
     name                VARCHAR(150) NOT NULL,
     email               VARCHAR(150) NOT NULL,
     password_hash       VARCHAR(255) NOT NULL,
@@ -432,24 +431,70 @@ CREATE TABLE asset_status_histories (
 CREATE INDEX idx_history_asset ON asset_status_histories(asset_id, changed_at);
 
 -- =====================================================================
+-- 15B. PLATFORM ADMINS (admin lintas tenant — TERPISAH TOTAL dari `users`,
+--      demi keamanan: lihat migration_separate_platform_admins.sql. Login,
+--      bentuk JWT (utils/token.js signPlatformToken, `type: 'platform'`),
+--      dan middleware (middleware/auth.js authenticatePlatform) semuanya
+--      sendiri, tidak menumpang jalur pengguna tenant sama sekali. TANPA
+--      tenant_id — akun ini murni identitas staf platform, tidak pernah
+--      "milik" tenant mana pun.
+-- =====================================================================
+CREATE TABLE platform_admins (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username        VARCHAR(50) NOT NULL UNIQUE,
+    name            VARCHAR(150) NOT NULL,
+    email           VARCHAR(150) NOT NULL UNIQUE,
+    password_hash   VARCHAR(255) NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active','inactive')),
+    token_version   INT NOT NULL DEFAULT 1,
+    last_login_at   TIMESTAMP NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at      TIMESTAMP NULL
+);
+CREATE TRIGGER trg_platform_admins_updated_at BEFORE UPDATE ON platform_admins
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Padanan email_change_otps (tabel punya `users`), tidak bisa dipakai
+-- langsung karena FK-nya ke users(id) — admin platform tidak pernah hidup
+-- di tabel itu.
+CREATE TABLE platform_admin_email_otps (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    platform_admin_id   BIGINT NOT NULL UNIQUE REFERENCES platform_admins(id) ON DELETE CASCADE,
+    new_email           VARCHAR(150) NOT NULL,
+    otp_code            VARCHAR(10) NOT NULL,
+    attempts            INT NOT NULL DEFAULT 0,
+    expires_at          TIMESTAMP NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================================
 -- 16. AUDIT LOGS
 -- =====================================================================
+-- tenant_id NULLABLE + platform_admin_id: aksi admin platform (lintas
+-- tenant, mis. kelola katalog paket) tidak selalu punya satu tenant yang
+-- relevan, dan actor-nya hidup di tabel platform_admins yang terpisah dari
+-- `users` sejak migration_separate_platform_admins.sql -- lihat catatan
+-- panjang di utils/auditLogger.js.
 CREATE TABLE audit_logs (
-    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    tenant_id       BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    user_id         BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
-    action          VARCHAR(20) NOT NULL
-                        CHECK (action IN ('create','update','delete','scan','login','logout','export')),
-    entity_type     VARCHAR(50) NOT NULL,
-    entity_id       BIGINT NULL,
-    old_values      JSONB NULL,
-    new_values      JSONB NULL,
-    ip_address      VARCHAR(45) NULL,
-    user_agent      VARCHAR(255) NULL,
-    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tenant_id           BIGINT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id             BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+    platform_admin_id   BIGINT NULL REFERENCES platform_admins(id) ON DELETE SET NULL,
+    action              VARCHAR(20) NOT NULL
+                            CHECK (action IN ('create','update','delete','scan','login','logout','export')),
+    entity_type         VARCHAR(50) NOT NULL,
+    entity_id           BIGINT NULL,
+    old_values          JSONB NULL,
+    new_values          JSONB NULL,
+    ip_address          VARCHAR(45) NULL,
+    user_agent          VARCHAR(255) NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
+CREATE INDEX idx_audit_platform_admin ON audit_logs(platform_admin_id);
 CREATE INDEX idx_audit_created ON audit_logs(created_at);
 CREATE INDEX idx_audit_tenant ON audit_logs(tenant_id);
 

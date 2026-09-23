@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import LandingPage from './pages/LandingPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
@@ -51,6 +51,7 @@ import PlatformUsers from './pages/PlatformUsers.jsx';
 import PlatformAuditLog from './pages/PlatformAuditLog.jsx';
 import PlatformIpWhitelist from './pages/PlatformIpWhitelist.jsx';
 import PlatformTestimonials from './pages/PlatformTestimonials.jsx';
+import PlatformLogin from './pages/PlatformLogin.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 
@@ -61,23 +62,30 @@ import Layout from './components/Layout.jsx';
  */
 /* "/" adalah halaman pemasaran publik untuk pengunjung anonim — tapi begitu
    sudah login, tetap diarahkan ke Dasbor seperti sebelumnya, bukan disuguhi
-   halaman jualan produk yang sudah mereka pakai. Admin platform diarahkan ke
-   panelnya sendiri, bukan Dasbor tenant — lihat catatan di homeForUser(). */
-function homeForUser(user) {
-  return user?.is_platform_admin ? '/platform/dashboard' : '/dashboard';
+   halaman jualan produk yang sudah mereka pakai. Admin platform TIDAK PERNAH
+   punya sesi tenant (dua sesi terpisah total sejak
+   migration_separate_platform_admins.sql, lihat PlatformAuthContext.jsx),
+   jadi `user` di sini selalu berarti pengguna tenant biasa. */
+function homeForUser() {
+  return '/dashboard';
 }
 
 function HomeRoute() {
   const { user } = useAuth();
-  return user ? <Navigate to={homeForUser(user)} replace /> : <LandingPage />;
+  return user ? <Navigate to={homeForUser()} replace /> : <LandingPage />;
 }
 
-/* Rute tak dikenal ("*") juga ikut aturan yang sama — dulu selalu balik ke
-   /dashboard, jadi admin platform yang salah ketik URL malah nyasar ke
-   Dasbor tenant. */
+/* Rute tak dikenal ("*") — path di bawah /platform/* diarahkan ke sesi
+   admin platform-nya sendiri (bukan /dashboard tenant), supaya admin
+   platform yang salah ketik URL panelnya sendiri tidak nyasar ke sesi
+   tenant yang memang tidak pernah dipunyainya. */
 function NotFoundRedirect() {
   const { user } = useAuth();
-  return <Navigate to={homeForUser(user)} replace />;
+  const location = useLocation();
+  if (location.pathname.startsWith('/platform/')) {
+    return <Navigate to="/platform/dashboard" replace />;
+  }
+  return user ? <Navigate to={homeForUser()} replace /> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -164,13 +172,19 @@ export default function App() {
         <Route path="/billing/invoices/:id" element={<ProtectedRoute module="billing"><InvoicePrintPage /></ProtectedRoute>} />
       </Route>
 
-      {/* Lintas tenant, khusus admin platform (Fase 5 SaaS) — bukan modul yang
-          tunduk pada matriks izin per-tenant biasa, jadi tidak pakai prop
-          `module`. Prop `platform` di ProtectedRoute yang menjaga dua arah:
-          harus is_platform_admin untuk masuk sini, dan is_platform_admin
-          TIDAK BOLEH masuk ke rute tenant biasa di atas. Panel ini punya
-          kerangka & navigasinya sendiri (PlatformLayout.jsx) — TIDAK ikut
-          dipindah ke sistem tab ala Chrome di atas. */}
+      {/* Lintas tenant, khusus admin platform (Fase 5 SaaS) — sesi TERPISAH
+          TOTAL dari sesi tenant sejak migration_separate_platform_admins.sql
+          (lihat PlatformAuthContext.jsx), bukan modul yang tunduk pada
+          matriks izin per-tenant biasa, jadi tidak pakai prop `module`. Prop
+          `platform` di ProtectedRoute mendelegasikan penjagaannya ke sesi
+          admin platform sendiri. Panel ini punya kerangka & navigasinya
+          sendiri (PlatformLayout.jsx) — TIDAK ikut dipindah ke sistem tab ala
+          Chrome di atas.
+
+          /platform/login SENGAJA TIDAK ditautkan dari halaman publik mana
+          pun (landing page, /login, /:slug/login) — hanya bisa dibuka lewat
+          URL langsung, lihat catatan di pages/PlatformLogin.jsx. */}
+      <Route path="/platform/login" element={<PlatformLogin />} />
       <Route path="/platform/dashboard" element={<ProtectedRoute platform><PlatformDashboard /></ProtectedRoute>} />
       <Route path="/platform/tenants" element={<ProtectedRoute platform><PlatformTenants /></ProtectedRoute>} />
       <Route path="/platform/admins" element={<ProtectedRoute platform><PlatformAdmins /></ProtectedRoute>} />

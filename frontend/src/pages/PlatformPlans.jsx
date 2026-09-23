@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card from '../components/ui/Card.jsx';
@@ -155,7 +155,7 @@ export default function PlatformPlans() {
   const [busyId, setBusyId] = useState(null);
 
   function load() {
-    axiosClient.get('/platform/plans')
+    platformAxiosClient.get('/platform/plans')
       .then((res) => setPlans(res.data.plans))
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat katalog paket.'));
   }
@@ -195,10 +195,10 @@ export default function PlatformPlans() {
     try {
       const payload = formToPayload(form, { isCreate: modalMode === 'create' });
       if (modalMode === 'create') {
-        await axiosClient.post('/platform/plans', payload);
+        await platformAxiosClient.post('/platform/plans', payload);
         pushSuccess(`Paket "${payload.name}" berhasil ditambahkan.`);
       } else {
-        await axiosClient.patch(`/platform/plans/${form.id}`, payload);
+        await platformAxiosClient.patch(`/platform/plans/${form.id}`, payload);
         pushSuccess(`Paket "${payload.name}" berhasil diperbarui.`);
       }
       closeModal();
@@ -213,7 +213,7 @@ export default function PlatformPlans() {
   async function handleMove(planId, direction) {
     setBusyId(planId);
     try {
-      const res = await axiosClient.patch(`/platform/plans/${planId}/move`, { direction });
+      const res = await platformAxiosClient.patch(`/platform/plans/${planId}/move`, { direction });
       setPlans(res.data.plans);
     } catch (err) {
       pushError(err.response?.data?.message || 'Gagal mengubah urutan paket.');
@@ -226,7 +226,7 @@ export default function PlatformPlans() {
     if (!confirm(`Hapus paket "${plan.name}"? Tindakan ini tidak bisa dibatalkan.`)) return;
     setBusyId(plan.id);
     try {
-      await axiosClient.delete(`/platform/plans/${plan.id}`);
+      await platformAxiosClient.delete(`/platform/plans/${plan.id}`);
       pushSuccess(`Paket "${plan.name}" dihapus.`);
       load();
     } catch (err) {

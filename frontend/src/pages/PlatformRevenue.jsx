@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import StatCard from '../components/ui/StatCard.jsx';
@@ -62,7 +62,7 @@ export default function PlatformRevenue() {
   const [range, setRange] = useState(30);
 
   useEffect(() => {
-    axiosClient.get('/platform/revenue', { params: { days: range } })
+    platformAxiosClient.get('/platform/revenue', { params: { days: range } })
       .then((res) => setData(res.data))
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat data pendapatan.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps

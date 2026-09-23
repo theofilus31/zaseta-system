@@ -19,13 +19,16 @@ INSERT INTO tenants (slug, company_name, status, plan) VALUES
 
 -- Ganti password_hash ini dengan hasil bcrypt password pilihan Anda sendiri:
 --   node -e "console.log(require('bcryptjs').hashSync('password_anda', 10))"
--- is_platform_admin = TRUE supaya akun ini juga bisa masuk /platform/* (panel
--- admin platform lintas tenant, Fase 5 SaaS) -- bukan cuma admin tenant biasa.
+-- Ini admin TENANT biasa (mengelola tenant 'default' saja) -- BUKAN admin
+-- platform. Sejak migration_separate_platform_admins.sql, admin platform
+-- hidup di tabel `platform_admins` yang terpisah total dari `users`; bikin
+-- akun admin platform pertama lewat `node scripts/bootstrap-super-admin.js`,
+-- bukan lewat baris ini.
 -- email_verified_at diisi NOW() -- akun bawaan seed bukan hasil pendaftaran
 -- mandiri, jadi tidak perlu (dan tidak bisa) melalui alur verifikasi OTP
 -- (lihat catatan users.email_verified_at dan authController.signup).
-INSERT INTO users (tenant_id, username, role_id, is_platform_admin, name, email, password_hash, email_verified_at) VALUES
-  ((SELECT id FROM tenants WHERE slug = 'default'), 'admin', 1, TRUE, 'Administrator', 'admin@example.com', '$2a$10$replace.with.a.real.bcrypt.hash.generated.locally', NOW());
+INSERT INTO users (tenant_id, username, role_id, name, email, password_hash, email_verified_at) VALUES
+  ((SELECT id FROM tenants WHERE slug = 'default'), 'admin', 1, 'Administrator', 'admin@example.com', '$2a$10$replace.with.a.real.bcrypt.hash.generated.locally', NOW());
 
 INSERT INTO asset_categories (tenant_id, name, slug, description) VALUES
   ((SELECT id FROM tenants WHERE slug = 'default'), 'Laptop', 'laptop', 'Laptop dan notebook'),

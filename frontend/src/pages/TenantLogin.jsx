@@ -56,8 +56,8 @@ export default function TenantLogin() {
     setError('');
     setLoading(true);
     try {
-      const loggedInUser = await login(username, password, slug);
-      navigate(loggedInUser?.is_platform_admin ? '/platform/dashboard' : '/dashboard');
+      await login(username, password, slug);
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal masuk. Periksa nama pengguna dan kata sandi Anda.');
     } finally {
@@ -73,8 +73,8 @@ export default function TenantLogin() {
     setError('');
     setLoading(true);
     try {
-      const loggedInUser = await googleLogin(credential, slug);
-      navigate(loggedInUser?.is_platform_admin ? '/platform/dashboard' : '/dashboard');
+      await googleLogin(credential, slug);
+      navigate('/dashboard');
     } catch (err) {
       const data = err.response?.data;
       if (data?.code === 'NO_ACCOUNT_FOUND') {

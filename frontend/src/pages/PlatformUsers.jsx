@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Pagination from '../components/ui/Pagination.jsx';
@@ -42,7 +42,7 @@ export default function PlatformUsers() {
   useEffect(() => {
     setLoading(true);
     const timer = setTimeout(() => {
-      axiosClient.get('/platform/users', { params: { q: search, page, limit: 20 } })
+      platformAxiosClient.get('/platform/users', { params: { q: search, page, limit: 20 } })
         .then((res) => { setUsers(res.data.users); setPagination(res.data.pagination); })
         .finally(() => setLoading(false));
     }, search ? 300 : 0);
@@ -95,9 +95,6 @@ export default function PlatformUsers() {
                         <span className="min-w-0">
                           <span className="flex items-center gap-1.5">
                             <span className="block text-[13px] font-semibold text-ink-800 truncate">{u.name}</span>
-                            {u.isPlatformAdmin && (
-                              <i className="fas fa-shield-halved text-[10px] text-brand-500" title="Admin Platform" aria-hidden="true" />
-                            )}
                           </span>
                           <span className="block text-[11px] text-ink-400 truncate">{u.email}</span>
                         </span>

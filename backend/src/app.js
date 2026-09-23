@@ -25,6 +25,7 @@ const requestRoutes = require('./routes/requestRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const billingRoutes = require('./routes/billingRoutes');
 const platformRoutes = require('./routes/platformRoutes');
+const platformAuthRoutes = require('./routes/platformAuthRoutes');
 const testimonialRoutes = require('./routes/testimonialRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -105,6 +106,7 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/platform-auth', platformAuthRoutes);
 app.use('/api/testimonials', testimonialRoutes);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

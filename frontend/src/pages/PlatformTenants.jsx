@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card from '../components/ui/Card.jsx';
@@ -15,7 +15,8 @@ import { SearchInput, SearchableSelect, DateField, TextField, FormError } from '
  * ============================================================================
  *  DAFTAR & KELOLA TENANT — KHUSUS ADMIN PLATFORM (Fase 5 SaaS)
  * ============================================================================
- *  Lintas tenant, dijaga `users.is_platform_admin`. Dua aksi tersedia per
+ *  Lintas tenant, dijaga sesi admin platform sendiri (authenticatePlatform,
+ *  lihat migration_separate_platform_admins.sql). Dua aksi tersedia per
  *  tenant:
  *   - Tangguhkan/Aktifkan: mengubah tenants.status — SEMUA pengguna tenant
  *     itu langsung kehilangan/mendapat kembali akses (lihat middleware/auth.js).
@@ -43,7 +44,7 @@ function ChangePlanModal({ tenant, plans, onClose, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const res = await axiosClient.patch(`/platform/tenants/${tenant.id}/plan`, {
+      const res = await platformAxiosClient.patch(`/platform/tenants/${tenant.id}/plan`, {
         plan,
         expiresAt: selectedPlan?.price ? (expiresAt || undefined) : undefined,
       });
@@ -109,7 +110,7 @@ function DeleteTenantModal({ tenant, onClose, onDeleted }) {
     setError('');
     setDeleting(true);
     try {
-      const res = await axiosClient.delete(`/platform/tenants/${tenant.id}`, { data: { confirmSlug } });
+      const res = await platformAxiosClient.delete(`/platform/tenants/${tenant.id}`, { data: { confirmSlug } });
       onDeleted(res.data.message);
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal menghapus tenant.');
@@ -159,14 +160,14 @@ export default function PlatformTenants() {
   const [statusBusyId, setStatusBusyId] = useState(null);
 
   function load() {
-    axiosClient.get('/platform/tenants')
+    platformAxiosClient.get('/platform/tenants')
       .then((res) => setTenants(res.data.tenants))
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat daftar tenant.'));
   }
 
   useEffect(() => {
     load();
-    axiosClient.get('/billing/plans').then((res) => setPlans(res.data.plans)).catch(() => {});
+    platformAxiosClient.get('/billing/plans').then((res) => setPlans(res.data.plans)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -179,7 +180,7 @@ export default function PlatformTenants() {
 
     setStatusBusyId(tenant.id);
     try {
-      await axiosClient.patch(`/platform/tenants/${tenant.id}/status`, { status: nextStatus });
+      await platformAxiosClient.patch(`/platform/tenants/${tenant.id}/status`, { status: nextStatus });
       pushSuccess(nextStatus === 'suspended' ? `${tenant.companyName} ditangguhkan.` : `${tenant.companyName} diaktifkan kembali.`);
       load();
     } catch (err) {

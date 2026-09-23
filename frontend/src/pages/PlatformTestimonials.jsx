@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -50,7 +50,7 @@ export default function PlatformTestimonials() {
 
   function load() {
     setTestimonials(null);
-    axiosClient.get('/platform/testimonials', { params: { status } })
+    platformAxiosClient.get('/platform/testimonials', { params: { status } })
       .then((res) => setTestimonials(res.data.testimonials))
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat testimoni.'));
   }
@@ -60,7 +60,7 @@ export default function PlatformTestimonials() {
   async function resolve(id, approve) {
     setBusyId(id);
     try {
-      await axiosClient.post(`/platform/testimonials/${id}/${approve ? 'approve' : 'reject'}`);
+      await platformAxiosClient.post(`/platform/testimonials/${id}/${approve ? 'approve' : 'reject'}`);
       pushSuccess(approve ? 'Testimoni disetujui, sekarang tampil di landing page.' : 'Testimoni ditolak.');
       load();
     } catch (err) {

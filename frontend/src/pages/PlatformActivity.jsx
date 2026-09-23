@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card from '../components/ui/Card.jsx';
@@ -53,13 +53,13 @@ export default function PlatformActivity() {
   const [lastFetched, setLastFetched] = useState(null);
 
   useEffect(() => {
-    axiosClient.get('/platform/tenants')
+    platformAxiosClient.get('/platform/tenants')
       .then((res) => setTenants(res.data.tenants.map((t) => ({ key: String(t.id), label: t.companyName }))))
       .catch(() => {}); // dropdown tenant opsional -- kegagalan di sini tidak boleh menghalangi feed utamanya
   }, []);
 
   function load({ silent = false } = {}) {
-    axiosClient.get('/platform/activity', { params: { action: action || undefined, tenantId: tenantId || undefined } })
+    platformAxiosClient.get('/platform/activity', { params: { action: action || undefined, tenantId: tenantId || undefined } })
       .then((res) => {
         setLogs(res.data.logs);
         setLastFetched(new Date());

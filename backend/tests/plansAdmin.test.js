@@ -1,12 +1,36 @@
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-require('./helpers/teardown');
-require('./helpers/setup');
 const pool = require('../src/config/db');
 const { createPlan, updatePlan, movePlan, deletePlan, listPlansAdmin } = require('../src/controllers/platformController');
 const { getPlan } = require('../src/config/plans');
-const { createTestTenant, dropTestTenant } = require('./helpers/testTenant');
-const { mockReq, runMiddleware } = require('./helpers/mockReqRes');
+const { createTestTenant, dropTestTenant, createTestPlatformAdmin, dropTestPlatformAdmin } = require('./helpers/testTenant');
+const { mockReq: baseMockReq, runMiddleware } = require('./helpers/mockReqRes');
+
+/**
+ * Semua test di sini memanggil platformController.js, yang menulis audit log
+ * lewat logAudit({ platformAdminId }) -- di-FK ke tabel `platform_admins`
+ * (lihat migration_separate_platform_admins.sql). `userId` bawaan mockReq()
+ * (angka 1) TIDAK BOLEH diandalkan begitu saja di sini (sama seperti alasan
+ * createTestUser() ada -- lihat catatannya di testTenant.js): di database
+ * bersih, tidak ada jaminan baris platform_admins id=1 ada. Satu admin
+ * sungguhan dibuat sekali untuk seluruh file ini (bukan bagian yang diuji,
+ * cuma actor-nya) dan dipakai di setiap panggilan lewat wrapper mockReq() ini.
+ *
+ * Hook ini DIDAFTARKAN SEBELUM require('./helpers/teardown') di bawah dengan
+ * sengaja -- hook `after` top-level jalan menurut URUTAN PENDAFTARAN (FIFO),
+ * jadi baris ini harus lebih dulu daripada teardown.js supaya penghapusan
+ * baris uji ini terjadi SEBELUM pool.end() teardown, bukan sesudahnya
+ * (query ke pool yang sudah ditutup melempar error).
+ */
+let testAdminId;
+before(async () => { testAdminId = await createTestPlatformAdmin(); });
+after(() => dropTestPlatformAdmin(testAdminId));
+function mockReq(opts) {
+  return baseMockReq({ userId: testAdminId, ...opts });
+}
+
+require('./helpers/teardown');
+require('./helpers/setup');
 
 /**
  * CRUD katalog paket (platformController.createPlan/updatePlan/movePlan/

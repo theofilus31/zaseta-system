@@ -1,14 +1,25 @@
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-require('./helpers/teardown');
-require('./helpers/setup');
 const pool = require('../src/config/db');
 const { activateSubscription, cancelActiveSubscription } = require('../src/services/subscriptionService');
 const billingController = require('../src/controllers/billingController');
 const { updatePlan } = require('../src/controllers/platformController');
 const { getPlan } = require('../src/config/plans');
-const { createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets } = require('./helpers/testTenant');
+const { createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets, createTestPlatformAdmin, dropTestPlatformAdmin } = require('./helpers/testTenant');
 const { mockReq, runMiddleware } = require('./helpers/mockReqRes');
+
+// updatePlan() (platformController.js) menulis audit log lewat
+// logAudit({ platformAdminId }), di-FK ke tabel `platform_admins` -- perlu
+// satu baris admin sungguhan, bukan sekadar userId bawaan mockReq() (lihat
+// catatan yang sama di plansAdmin.test.js). Didaftarkan SEBELUM
+// require('./helpers/teardown') di bawah dengan sengaja -- lihat catatan
+// urutan hook FIFO yang sama di plansAdmin.test.js.
+let testAdminId;
+before(async () => { testAdminId = await createTestPlatformAdmin(); });
+after(() => dropTestPlatformAdmin(testAdminId));
+
+require('./helpers/teardown');
+require('./helpers/setup');
 
 // requestPlanChange (paket berbayar) & handlePakasirWebhook memanggil
 // getPaymentGateway('pakasir'), yang butuh kredensial terisi -- nilai palsu
@@ -141,7 +152,7 @@ test('Downgrade Business -> Starter, pemakaian MELEBIHI limit: dapat peringatan,
 
 test('Harga paket berubah SELAGI checkout menunggu pembayaran: tenant tetap ditagih harga saat checkout dibuat, bukan harga baru', async (t) => {
   const originalStarterPrice = getPlan('starter').price;
-  t.after(() => runMiddleware(updatePlan, mockReq({ params: { id: 'starter' }, body: { price: originalStarterPrice } })));
+  t.after(() => runMiddleware(updatePlan, mockReq({ userId: testAdminId, params: { id: 'starter' }, body: { price: originalStarterPrice } })));
 
   const tenantId = await createTestTenant('free');
   t.after(() => dropTestTenant(tenantId));
@@ -154,7 +165,7 @@ test('Harga paket berubah SELAGI checkout menunggu pembayaran: tenant tetap dita
   assert.equal(createRes.body.price, originalStarterPrice, 'harga dikunci di angka katalog SAAT CHECKOUT DIBUAT');
 
   // Admin platform menaikkan harga Starter SELAGI tenant belum sempat membayar.
-  const priceChange = await runMiddleware(updatePlan, mockReq({ params: { id: 'starter' }, body: { price: 777000 } }));
+  const priceChange = await runMiddleware(updatePlan, mockReq({ userId: testAdminId, params: { id: 'starter' }, body: { price: 777000 } }));
   assert.equal(priceChange.res.statusCode, 200);
   assert.equal(getPlan('starter').price, 777000);
 

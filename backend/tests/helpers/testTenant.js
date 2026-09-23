@@ -109,4 +109,30 @@ async function bulkInsertUsers(tenantId, count) {
   );
 }
 
-module.exports = { createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets, bulkInsertLocations, bulkInsertUsers };
+/**
+ * Satu admin platform sungguhan (tabel `platform_admins`, TERPISAH dari
+ * `users` sejak migration_separate_platform_admins.sql) — dibutuhkan test
+ * mana pun yang memanggil controllers/platformController.js, karena
+ * logAudit({ platformAdminId }) di sana di-FK ke tabel ini (audit_logs.
+ * platform_admin_id). Tanpa baris NYATA di sini, insert audit log-nya gagal
+ * diam-diam (FK violation ditangkap & cuma di-console.error, lihat
+ * utils/auditLogger.js) -- test tetap lolos tapi jejak audit-nya hilang.
+ */
+async function createTestPlatformAdmin() {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const [result] = await pool.query(
+    `INSERT INTO platform_admins (username, name, email, password_hash, status)
+     VALUES (:username, 'Test Platform Admin', :email, 'x', 'active') RETURNING id`,
+    { username: `test-admin-${suffix}`, email: `test-admin-${suffix}@example.test` }
+  );
+  return result.insertId;
+}
+
+async function dropTestPlatformAdmin(adminId) {
+  await pool.query(`DELETE FROM platform_admins WHERE id = :adminId`, { adminId });
+}
+
+module.exports = {
+  createTestTenant, dropTestTenant, createTestUser, bulkInsertAssets, bulkInsertLocations, bulkInsertUsers,
+  createTestPlatformAdmin, dropTestPlatformAdmin,
+};

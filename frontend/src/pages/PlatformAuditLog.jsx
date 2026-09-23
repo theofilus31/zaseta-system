@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { format, isValid, parse } from 'date-fns';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
@@ -165,7 +165,7 @@ export default function PlatformAuditLog() {
 
   useEffect(() => {
     setLoading(true);
-    axiosClient.get('/platform/audit-log', { params: { search, action, dateFrom, dateTo, page, limit: 25 } })
+    platformAxiosClient.get('/platform/audit-log', { params: { search, action, dateFrom, dateTo, page, limit: 25 } })
       .then((res) => { setLogs(res.data.logs); setPagination(res.data.pagination); })
       .finally(() => setLoading(false));
   }, [search, action, dateFrom, dateTo, page]);

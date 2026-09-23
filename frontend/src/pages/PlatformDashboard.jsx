@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
+import platformAxiosClient from '../api/platformAxiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import StatCard from '../components/ui/StatCard.jsx';
@@ -79,7 +79,7 @@ export default function PlatformDashboard() {
   const [lastFetched, setLastFetched] = useState(null);
 
   function load(days, { silent = false } = {}) {
-    axiosClient.get('/platform/stats', { params: { days } })
+    platformAxiosClient.get('/platform/stats', { params: { days } })
       .then((res) => {
         setStats(res.data);
         setLastFetched(new Date());

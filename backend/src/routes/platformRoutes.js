@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/platformController');
-const { authenticate, requirePlatformAdmin } = require('../middleware/auth');
+const { authenticatePlatform } = require('../middleware/auth');
 
 // Seluruh rute di sini lintas tenant — tidak ada satu pun yang berlaku "di
 // dalam" satu tenant seperti requirePermission/requireRole biasa, jadi
-// dijaga satu gerbang di sini, bukan per-rute.
-router.use(authenticate, requirePlatformAdmin);
+// dijaga satu gerbang di sini, bukan per-rute. Sesi admin platform TERPISAH
+// TOTAL dari sesi tenant sejak migration_separate_platform_admins.sql — lihat
+// authenticatePlatform di middleware/auth.js & login-nya sendiri di
+// routes/platformAuthRoutes.js.
+router.use(authenticatePlatform);
 
 router.get('/stats', ctrl.getStats);
 router.get('/revenue', ctrl.getRevenue);
@@ -26,8 +29,7 @@ router.delete('/tenants/:id', ctrl.deleteTenant);
 
 router.get('/admins', ctrl.listPlatformAdmins);
 router.post('/admins', ctrl.createPlatformAdmin);
-router.get('/users/search', ctrl.searchUsers);
-router.patch('/users/:id/platform-admin', ctrl.setPlatformAdmin);
+router.delete('/admins/:id', ctrl.removePlatformAdmin);
 router.get('/users', ctrl.listAllUsers);
 router.get('/audit-log', ctrl.listAllAuditLogs);
 

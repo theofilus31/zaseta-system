@@ -19,13 +19,14 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * ============================================================================
  *  ADMIN PLATFORM — Fase 5 SaaS (super-admin, lintas tenant)
  * ============================================================================
- *  Semua endpoint di sini SENGAJA lintas tenant — dijaga `requirePlatformAdmin`
+ *  Semua endpoint di sini SENGAJA lintas tenant — dijaga `authenticatePlatform`
  *  di routes/platformRoutes.js (bukan requirePermission/requireRole biasa,
- *  yang keduanya berlaku DI DALAM satu tenant). Ini kelanjutan konsep
- *  `is_platform_admin` yang diperkenalkan Fase 4 untuk persetujuan upgrade
- *  paket (lihat billingController.js) — sekarang diperluas jadi panel yang
- *  lebih lengkap: daftar/kelola tenant, statistik, ubah paket manual, dan
- *  kelola siapa saja yang punya akses admin platform.
+ *  yang keduanya berlaku DI DALAM satu tenant). Actor di sini SELALU
+ *  `req.platformAdmin` (baris tabel `platform_admins`, TIDAK PERNAH
+ *  `req.user`) sejak migration_separate_platform_admins.sql memisahkan admin
+ *  platform total dari pengguna tenant demi keamanan — lihat catatan panjang
+ *  di utils/auditLogger.js soal kenapa id-nya tidak bisa ditulis ke kolom
+ *  yang di-FK ke `users`.
  * ============================================================================
  */
 
@@ -128,10 +129,11 @@ const getStats = asyncHandler(async (req, res) => {
 
   const [recentActivity] = await pool.query(
     `SELECT al.id, al.action, al.entity_type AS "entityType", al.created_at AS "createdAt",
-            u.name AS "userName", t.company_name AS "tenantName"
+            COALESCE(u.name, pa.name) AS "userName", t.company_name AS "tenantName"
      FROM audit_logs al
-     JOIN tenants t ON t.id = al.tenant_id
+     LEFT JOIN tenants t ON t.id = al.tenant_id
      LEFT JOIN users u ON u.id = al.user_id
+     LEFT JOIN platform_admins pa ON pa.id = al.platform_admin_id
      ORDER BY al.created_at DESC
      LIMIT 8`
   );
@@ -246,10 +248,11 @@ const getActivity = asyncHandler(async (req, res) => {
 
   const [rows] = await pool.query(
     `SELECT al.id, al.action, al.entity_type AS "entityType", al.created_at AS "createdAt",
-            u.name AS "userName", t.id AS "tenantId", t.company_name AS "tenantName"
+            COALESCE(u.name, pa.name) AS "userName", t.id AS "tenantId", t.company_name AS "tenantName"
      FROM audit_logs al
-     JOIN tenants t ON t.id = al.tenant_id
+     LEFT JOIN tenants t ON t.id = al.tenant_id
      LEFT JOIN users u ON u.id = al.user_id
+     LEFT JOIN platform_admins pa ON pa.id = al.platform_admin_id
      ${whereClause}
      ORDER BY al.created_at DESC
      LIMIT ${ACTIVITY_LIMIT}`,
@@ -352,7 +355,7 @@ const createPlan = asyncHandler(async (req, res) => {
   // entityId TIDAK dioper -- audit_logs.entity_id bertipe BIGINT, sedangkan
   // id paket adalah slug teks ('starter', dst.), jadi disertakan di
   // newValues saja (JSONB, terima teks apa pun).
-  await logAudit({ userId: req.user.id, action: 'create', entityType: 'plan', newValues: { id: normalizedId, name } });
+  await logAudit({ platformAdminId: req.platformAdmin.id, tenantId: null, action: 'create', entityType: 'plan', newValues: { id: normalizedId, name } });
 
   res.status(201).json({ plan: getPlan(normalizedId) });
 });
@@ -402,7 +405,7 @@ const updatePlan = asyncHandler(async (req, res) => {
   );
 
   await reloadPlansCache();
-  await logAudit({ userId: req.user.id, action: 'update', entityType: 'plan', newValues: { id, ...next } });
+  await logAudit({ platformAdminId: req.platformAdmin.id, tenantId: null, action: 'update', entityType: 'plan', newValues: { id, ...next } });
 
   res.json({ plan: getPlan(id) });
 });
@@ -432,7 +435,7 @@ const movePlan = asyncHandler(async (req, res) => {
   await pool.query(`UPDATE plans SET sort_order = :sortOrder WHERE id = :id`, { id: neighbor.id, sortOrder: current.sortOrder });
 
   await reloadPlansCache();
-  await logAudit({ userId: req.user.id, action: 'update', entityType: 'plan', newValues: { id, moved: direction, swappedWith: neighbor.id } });
+  await logAudit({ platformAdminId: req.platformAdmin.id, tenantId: null, action: 'update', entityType: 'plan', newValues: { id, moved: direction, swappedWith: neighbor.id } });
 
   res.json({ plans: getAllPlans({ includeInactive: true }) });
 });
@@ -466,7 +469,7 @@ const deletePlan = asyncHandler(async (req, res) => {
 
   await pool.query(`DELETE FROM plans WHERE id = :id`, { id });
   await reloadPlansCache();
-  await logAudit({ userId: req.user.id, action: 'delete', entityType: 'plan', oldValues: { id, name: existing.name } });
+  await logAudit({ platformAdminId: req.platformAdmin.id, tenantId: null, action: 'delete', entityType: 'plan', oldValues: { id, name: existing.name } });
 
   res.json({ message: `Paket "${existing.name}" dihapus.` });
 });
@@ -503,7 +506,7 @@ const updateTenantStatus = asyncHandler(async (req, res) => {
   await pool.query(`UPDATE tenants SET status = :status WHERE id = :id`, { status, id });
 
   await logAudit({
-    userId: req.user.id, tenantId: Number(id), action: 'update', entityType: 'tenant_status', entityId: Number(id),
+    platformAdminId: req.platformAdmin.id, tenantId: Number(id), action: 'update', entityType: 'tenant_status', entityId: Number(id),
     oldValues: { status: tenant.status }, newValues: { status },
   });
 
@@ -535,12 +538,16 @@ const updateTenantPlan = asyncHandler(async (req, res) => {
   // Lewat subscriptionService (bukan UPDATE tenants langsung) supaya koreksi
   // manual ini juga tercatat sebagai riwayat subscriptions — lihat
   // subscriptionService.recordManualCorrection.
+  // createdBy TIDAK dioper -- subscriptions.created_by di-FK ke users(id),
+  // dan admin platform tidak lagi punya baris di sana (lihat catatan
+  // platform_admin_id di auditLogger.js). Siapa pelakunya tetap tercatat di
+  // audit_logs lewat logAudit di bawah.
   await recordManualCorrection({
-    tenantId: Number(id), planId: plan, expiresAt: resolvedExpiresAt, createdBy: req.user.id,
+    tenantId: Number(id), planId: plan, expiresAt: resolvedExpiresAt,
   });
 
   await logAudit({
-    userId: req.user.id, tenantId: Number(id), action: 'update', entityType: 'tenant_plan', entityId: Number(id),
+    platformAdminId: req.platformAdmin.id, tenantId: Number(id), action: 'update', entityType: 'tenant_plan', entityId: Number(id),
     oldValues: { plan: tenant.plan }, newValues: { plan, expiresAt: resolvedExpiresAt },
   });
 
@@ -565,54 +572,39 @@ const deleteTenant = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: `Ketik kode perusahaan "${tenant.slug}" persis untuk konfirmasi penghapusan.` });
   }
 
-  // Katup pengaman: tenant yang jadi "rumah" satu atau lebih admin platform
-  // tidak boleh langsung dihapus di sini — cabut dulu akses admin platform
-  // penggunanya lewat menu Admin Platform, supaya tidak ada admin platform
-  // yang tiba-tiba kehilangan akun begitu saja lewat aksi ini.
-  const [[{ count: platformAdminCount }]] = await pool.query(
-    `SELECT COUNT(*) AS count FROM users WHERE tenant_id = :id AND is_platform_admin = TRUE`, { id }
-  );
-  if (platformAdminCount > 0) {
-    return res.status(409).json({
-      message: 'Tenant ini masih punya admin platform aktif. Cabut dulu akses admin platform semua penggunanya lewat menu Admin Platform sebelum menghapus tenant ini.',
-    });
-  }
-
   await pool.query(`DELETE FROM tenants WHERE id = :id`, { id });
 
-  /* tenantId di sini SENGAJA diisi tenant milik PELAKU (req.user.tenant_id),
-     bukan tenant yang baru dihapus -- audit_logs.tenant_id juga ON DELETE
-     CASCADE ke tenants, jadi kalau dicatat di bawah tenant yang dihapus,
-     baris audit ini sendiri ikut lenyap bersamanya dan jejaknya hilang. */
+  /* tenantId: null (BUKAN tenant yang baru dihapus) -- audit_logs.tenant_id
+     ON DELETE CASCADE ke tenants, jadi kalau dicatat di bawah tenant yang
+     dihapus, baris audit ini sendiri ikut lenyap bersamanya dan jejaknya
+     hilang. Admin platform tidak lagi "milik" tenant mana pun (lihat
+     migration_separate_platform_admins.sql), jadi tidak ada lagi tenant
+     alternatif yang relevan untuk dipakai di sini seperti dulu. */
   await logAudit({
-    userId: req.user.id, tenantId: req.user.tenant_id, action: 'delete', entityType: 'tenant', entityId: Number(id),
+    platformAdminId: req.platformAdmin.id, tenantId: null, action: 'delete', entityType: 'tenant', entityId: Number(id),
     oldValues: { slug: tenant.slug, companyName: tenant.companyName },
   });
 
   res.json({ id: Number(id), message: `Tenant "${tenant.companyName}" berhasil dihapus permanen.` });
 });
 
-// GET /api/platform/admins — semua pengguna dengan akses admin platform.
+// GET /api/platform/admins — semua admin platform (tabel `platform_admins`,
+// TERPISAH dari `users` sejak migration_separate_platform_admins.sql).
 const listPlatformAdmins = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.username, u.status, t.id AS "tenantId", t.company_name AS "tenantName"
-     FROM users u JOIN tenants t ON t.id = u.tenant_id
-     WHERE u.is_platform_admin = TRUE AND u.deleted_at IS NULL
-     ORDER BY u.name ASC`
+    `SELECT id, name, email, username, status
+     FROM platform_admins WHERE deleted_at IS NULL
+     ORDER BY name ASC`
   );
   res.json({ admins: rows });
 });
 
 // POST /api/platform/admins — { name, email, username } — bikin akun admin
-// platform BARU langsung dari sini, tanpa harus lewat "buat tenant, buat
-// user tenant, baru cari & beri akses" seperti alur setPlatformAdmin di
-// bawah. Akun barunya ditaruh di tenant YANG SAMA dengan admin platform yang
-// membuatnya (req.user.tenant_id) — bukan tenant baru — karena akun ini
-// murni identitas staf platform, tidak pernah dipakai untuk mengelola aset
-// tenant mana pun (lihat ProtectedRoute `platform` di frontend/src/App.jsx).
-// Kata sandi awal dibuatkan sistem & dikirim ke surel, sama seperti
-// userController.createUser — admin yang membuat akun ini tidak pernah tahu
-// kata sandi orang lain.
+// platform BARU, langsung di tabel `platform_admins` (TANPA tenant apa pun --
+// akun ini murni identitas staf platform, tidak pernah dipakai untuk
+// mengelola aset tenant mana pun). Kata sandi awal dibuatkan sistem &
+// dikirim ke surel, sama seperti userController.createUser — admin yang
+// membuat akun ini tidak pernah tahu kata sandi orang lain.
 const createPlatformAdmin = asyncHandler(async (req, res) => {
   const { name, email, username } = req.body;
   if (!name || !email || !username) {
@@ -629,41 +621,40 @@ const createPlatformAdmin = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Alamat surel tidak valid.' });
   }
 
-  const tenantId = req.user.tenant_id;
-
   const [existingUsername] = await pool.query(
-    `SELECT id FROM users WHERE tenant_id = :tenantId AND username = :username AND deleted_at IS NULL`,
-    { tenantId, username: normalizedUsername }
+    `SELECT id FROM platform_admins WHERE username = :username AND deleted_at IS NULL`,
+    { username: normalizedUsername }
   );
   if (existingUsername[0]) return res.status(409).json({ message: 'Nama pengguna sudah dipakai.' });
 
   const [existingEmail] = await pool.query(
-    `SELECT id FROM users WHERE tenant_id = :tenantId AND email = :email AND deleted_at IS NULL`,
-    { tenantId, email }
+    `SELECT id FROM platform_admins WHERE email = :email AND deleted_at IS NULL`,
+    { email }
   );
   if (existingEmail[0]) return res.status(409).json({ message: 'Surel sudah dipakai admin platform lain.' });
-
-  const [[adminRole]] = await pool.query(`SELECT id FROM roles WHERE name = 'admin' LIMIT 1`);
-  if (!adminRole) return res.status(500).json({ message: 'Peran internal "admin" tidak ada di database.' });
 
   const tempPassword = generateTempPassword();
   const passwordHash = await bcrypt.hash(tempPassword, 10);
 
   const [result] = await pool.query(
-    `INSERT INTO users (tenant_id, username, role_id, is_platform_admin, name, email, password_hash, status, email_verified_at)
-     VALUES (:tenantId, :username, :roleId, TRUE, :name, :email, :passwordHash, 'active', NOW()) RETURNING id`,
-    { tenantId, username: normalizedUsername, roleId: adminRole.id, name, email, passwordHash }
+    `INSERT INTO platform_admins (username, name, email, password_hash, status)
+     VALUES (:username, :name, :email, :passwordHash, 'active') RETURNING id`,
+    { username: normalizedUsername, name, email, passwordHash }
   );
 
   await logAudit({
-    userId: req.user.id, tenantId, action: 'create', entityType: 'platform_admin', entityId: result.insertId,
+    platformAdminId: req.platformAdmin.id, tenantId: null, action: 'create', entityType: 'platform_admin', entityId: result.insertId,
     newValues: { username: normalizedUsername, name, email },
   });
 
   let emailSent = true;
   try {
-    const loginUrl = `${(process.env.FRONTEND_URL || '').replace(/\/$/, '')}/login`;
-    await sendNewUserWelcome({ to: email, name, username: normalizedUsername, password: tempPassword, loginUrl, tenantId });
+    // loginUrl -> /platform/login (BUKAN /login tenant) -- lihat
+    // pages/PlatformLogin.jsx, sengaja tidak ditautkan dari UI publik mana
+    // pun, surel ini satu-satunya cara admin baru tahu alamatnya.
+    // tenantId: null -> getBranding() jatuh ke default ZASETA.
+    const loginUrl = `${(process.env.FRONTEND_URL || '').replace(/\/$/, '')}/platform/login`;
+    await sendNewUserWelcome({ to: email, name, username: normalizedUsername, password: tempPassword, loginUrl, tenantId: null });
   } catch (err) {
     console.error('Gagal mengirim surel akun admin platform baru:', err.message);
     emailSent = false;
@@ -673,15 +664,42 @@ const createPlatformAdmin = asyncHandler(async (req, res) => {
     id: result.insertId, name, email, username: normalizedUsername,
     message: emailSent
       ? `Admin platform "${name}" berhasil ditambahkan. Kata sandi awal telah dikirim ke ${email}.`
-      : `Admin platform "${name}" berhasil ditambahkan, tapi pengiriman surel kata sandi awal gagal. Minta yang bersangkutan memakai "Lupa Kata Sandi" di halaman Masuk.`,
+      : `Admin platform "${name}" berhasil ditambahkan, tapi pengiriman surel kata sandi awal gagal. Minta developer mengatur ulang kata sandinya langsung di database.`,
   });
 });
 
+// DELETE /api/platform/admins/:id — cabut akses admin platform (soft delete,
+// sama pola dengan users.deleted_at). Katup pengaman: admin platform AKTIF
+// TERAKHIR tidak boleh dihapus -- begitu itu terjadi, tidak ada lagi siapa
+// pun yang bisa membuka panel ini untuk memulihkannya.
+const removePlatformAdmin = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const [[target]] = await pool.query(`SELECT id, name FROM platform_admins WHERE id = :id AND deleted_at IS NULL`, { id });
+  if (!target) return res.status(404).json({ message: 'Admin platform tidak ditemukan.' });
+
+  const [[{ count }]] = await pool.query(
+    `SELECT COUNT(*) AS count FROM platform_admins WHERE status = 'active' AND deleted_at IS NULL`
+  );
+  if (count <= 1) {
+    return res.status(409).json({ message: 'Tidak bisa menghapus admin platform terakhir yang tersisa.' });
+  }
+
+  await pool.query(
+    `UPDATE platform_admins SET status = 'inactive', deleted_at = NOW(), token_version = token_version + 1 WHERE id = :id`,
+    { id }
+  );
+
+  await logAudit({
+    platformAdminId: req.platformAdmin.id, tenantId: null, action: 'delete', entityType: 'platform_admin', entityId: Number(id),
+    oldValues: { name: target.name },
+  });
+
+  res.json({ id: Number(id), message: `Akses admin platform "${target.name}" dicabut.` });
+});
+
 // GET /api/platform/users?page=&limit=&q= — DIREKTORI pengguna LINTAS TENANT,
-// dipaginasi (beda dari searchUsers di bawah: itu untuk memberi/mencabut
-// akses admin platform, minimal 2 huruf, maks 20 baris tanpa halaman
-// berikutnya — dibiarkan apa adanya supaya tidak mengubah alur yang sudah
-// dipakai PlatformAdmins.jsx). `q` opsional di sini, beda dari searchUsers.
+// dipaginasi. `q` opsional (nama/surel/nama pengguna).
 const listAllUsers = asyncHandler(async (req, res) => {
   // String(...) wajib -- query string yang aneh (mis. ?q[]=a&q[]=b) membuat
   // req.query.q jadi array, dan .trim() array melempar TypeError (500).
@@ -699,7 +717,7 @@ const listAllUsers = asyncHandler(async (req, res) => {
   const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.username, u.status, u.is_platform_admin AS "isPlatformAdmin",
+    `SELECT u.id, u.name, u.email, u.username, u.status,
             u.last_login_at AS "lastLoginAt", u.created_at AS "createdAt",
             t.id AS "tenantId", t.company_name AS "tenantName", r.name AS role
      FROM users u
@@ -716,7 +734,7 @@ const listAllUsers = asyncHandler(async (req, res) => {
   );
 
   res.json({
-    users: rows.map((r) => ({ ...r, isPlatformAdmin: Boolean(r.isPlatformAdmin) })),
+    users: rows,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 });
@@ -739,7 +757,7 @@ const listAllAuditLogs = asyncHandler(async (req, res) => {
     params.action = action;
   }
   if (search) {
-    conditions.push('(u.name ILIKE :searchLike OR t.company_name ILIKE :searchLike)');
+    conditions.push('(u.name ILIKE :searchLike OR pa.name ILIKE :searchLike OR t.company_name ILIKE :searchLike)');
     params.searchLike = `%${search}%`;
   }
   if (dateFrom) {
@@ -755,10 +773,11 @@ const listAllAuditLogs = asyncHandler(async (req, res) => {
   const [rows] = await pool.query(
     `SELECT al.id, al.action, al.entity_type AS "entityType", al.entity_id AS "entityId",
             al.old_values AS "oldValues", al.new_values AS "newValues", al.ip_address AS "ipAddress", al.created_at AS "createdAt",
-            u.id AS "userId", u.name AS "userName", t.id AS "tenantId", t.company_name AS "tenantName"
+            u.id AS "userId", COALESCE(u.name, pa.name) AS "userName", t.id AS "tenantId", t.company_name AS "tenantName"
      FROM audit_logs al
-     JOIN tenants t ON t.id = al.tenant_id
+     LEFT JOIN tenants t ON t.id = al.tenant_id
      LEFT JOIN users u ON u.id = al.user_id
+     LEFT JOIN platform_admins pa ON pa.id = al.platform_admin_id
      ${whereClause}
      ORDER BY al.created_at DESC, al.id DESC
      LIMIT :limit OFFSET :offset`,
@@ -766,7 +785,11 @@ const listAllAuditLogs = asyncHandler(async (req, res) => {
   );
 
   const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM audit_logs al JOIN tenants t ON t.id = al.tenant_id LEFT JOIN users u ON u.id = al.user_id ${whereClause}`,
+    `SELECT COUNT(*) AS total FROM audit_logs al
+     LEFT JOIN tenants t ON t.id = al.tenant_id
+     LEFT JOIN users u ON u.id = al.user_id
+     LEFT JOIN platform_admins pa ON pa.id = al.platform_admin_id
+     ${whereClause}`,
     params
   );
 
@@ -780,59 +803,6 @@ const listAllAuditLogs = asyncHandler(async (req, res) => {
     logs: rows.map((r) => ({ ...r, oldValues: parse(r.oldValues), newValues: parse(r.newValues) })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
-});
-
-// GET /api/platform/users/search?q= — cari pengguna LINTAS TENANT untuk
-// diberi/dicabut akses admin platform (lihat setPlatformAdmin). Minimal 2
-// karakter supaya tidak menyapu seluruh tabel users pada pengetikan pertama.
-const searchUsers = asyncHandler(async (req, res) => {
-  const q = String(req.query.q || '').trim();
-  if (q.length < 2) return res.json({ users: [] });
-
-  const like = `%${q}%`;
-  const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.username, u.is_platform_admin AS "isPlatformAdmin",
-            t.id AS "tenantId", t.company_name AS "tenantName"
-     FROM users u JOIN tenants t ON t.id = u.tenant_id
-     WHERE u.deleted_at IS NULL AND (u.email ILIKE :like OR u.username ILIKE :like OR u.name ILIKE :like)
-     ORDER BY u.name ASC LIMIT 20`,
-    { like }
-  );
-  res.json({ users: rows.map((r) => ({ ...r, isPlatformAdmin: Boolean(r.isPlatformAdmin) })) });
-});
-
-// PATCH /api/platform/users/:id/platform-admin — { grant: boolean }
-const setPlatformAdmin = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const grant = Boolean(req.body.grant);
-
-  const [[targetUser]] = await pool.query(
-    `SELECT id, tenant_id AS "tenantId", name, email, is_platform_admin AS "isPlatformAdmin"
-     FROM users WHERE id = :id AND deleted_at IS NULL`,
-    { id }
-  );
-  if (!targetUser) return res.status(404).json({ message: 'Pengguna tidak ditemukan.' });
-
-  // Katup pengaman: jangan sampai mencabut akses admin platform TERAKHIR yang
-  // tersisa — begitu itu terjadi, tidak ada lagi siapa pun yang bisa membuka
-  // panel ini untuk memberi akses balik.
-  if (!grant && targetUser.isPlatformAdmin) {
-    const [[{ count }]] = await pool.query(
-      `SELECT COUNT(*) AS count FROM users WHERE is_platform_admin = TRUE AND status = 'active' AND deleted_at IS NULL`
-    );
-    if (count <= 1) {
-      return res.status(409).json({ message: 'Tidak bisa mencabut akses admin platform terakhir yang tersisa.' });
-    }
-  }
-
-  await pool.query(`UPDATE users SET is_platform_admin = :grant WHERE id = :id`, { grant, id });
-
-  await logAudit({
-    userId: req.user.id, tenantId: targetUser.tenantId, action: 'update', entityType: 'platform_admin', entityId: Number(id),
-    oldValues: { isPlatformAdmin: Boolean(targetUser.isPlatformAdmin) }, newValues: { isPlatformAdmin: grant },
-  });
-
-  res.json({ id: Number(id), isPlatformAdmin: grant });
 });
 
 // POST /api/platform/plan-expiry/run — jalankan pengecekan kedaluwarsa paket
@@ -876,9 +846,12 @@ const addIpWhitelist = asyncHandler(async (req, res) => {
 
   let result;
   try {
+    // created_by TIDAK diisi (NULL) -- ip_whitelist.created_by di-FK ke
+    // users(id), dan admin platform tidak lagi punya baris di sana. Siapa
+    // pelakunya tetap tercatat di audit_logs lewat logAudit di bawah.
     [result] = await pool.query(
-      `INSERT INTO ip_whitelist (ip_address, label, created_by) VALUES (:ip, :label, :userId) RETURNING id`,
-      { ip, label: trimmedLabel, userId: req.user.id }
+      `INSERT INTO ip_whitelist (ip_address, label, created_by) VALUES (:ip, :label, NULL) RETURNING id`,
+      { ip, label: trimmedLabel }
     );
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ message: 'Alamat IP ini sudah ada di daftar putih.' });
@@ -891,7 +864,7 @@ const addIpWhitelist = asyncHandler(async (req, res) => {
   await reloadIpWhitelist();
 
   await logAudit({
-    userId: req.user.id, tenantId: req.user.tenant_id, action: 'create', entityType: 'ip_whitelist', entityId: result.insertId,
+    platformAdminId: req.platformAdmin.id, tenantId: null, action: 'create', entityType: 'ip_whitelist', entityId: result.insertId,
     newValues: { ipAddress: ip, label: trimmedLabel },
   });
 
@@ -908,7 +881,7 @@ const removeIpWhitelist = asyncHandler(async (req, res) => {
   await reloadIpWhitelist();
 
   await logAudit({
-    userId: req.user.id, tenantId: req.user.tenant_id, action: 'delete', entityType: 'ip_whitelist', entityId: Number(id),
+    platformAdminId: req.platformAdmin.id, tenantId: null, action: 'delete', entityType: 'ip_whitelist', entityId: Number(id),
     oldValues: { ipAddress: row.ipAddress },
   });
 
@@ -953,14 +926,17 @@ function resolveTestimonial(approve) {
       return res.status(409).json({ message: 'Testimoni ini sudah ditinjau sebelumnya.' });
     }
 
+    // reviewed_by TIDAK diisi (NULL) -- testimonials.reviewed_by di-FK ke
+    // users(id), dan admin platform tidak lagi punya baris di sana. Siapa
+    // pelakunya tetap tercatat di audit_logs lewat logAudit di bawah.
     const status = approve ? 'approved' : 'rejected';
     await pool.query(
-      `UPDATE testimonials SET status = :status, reviewed_by = :reviewedBy, reviewed_at = NOW() WHERE id = :id`,
-      { status, reviewedBy: req.user.id, id }
+      `UPDATE testimonials SET status = :status, reviewed_by = NULL, reviewed_at = NOW() WHERE id = :id`,
+      { status, id }
     );
 
     await logAudit({
-      userId: req.user.id, tenantId: testimonial.tenantId, action: 'update', entityType: 'testimonial', entityId: Number(id),
+      platformAdminId: req.platformAdmin.id, tenantId: testimonial.tenantId, action: 'update', entityType: 'testimonial', entityId: Number(id),
       newValues: { status },
     });
 
@@ -984,8 +960,7 @@ module.exports = {
   deleteTenant,
   listPlatformAdmins,
   createPlatformAdmin,
-  searchUsers,
-  setPlatformAdmin,
+  removePlatformAdmin,
   listAllUsers,
   listAllAuditLogs,
   listIpWhitelist,

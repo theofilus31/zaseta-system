@@ -33,6 +33,14 @@ async function authenticate(req, res, next) {
     return res.status(401).json({ message: 'Token tidak valid atau kedaluwarsa.' });
   }
 
+  // Token admin platform (lihat authenticatePlatform di bawah) TIDAK BOLEH
+  // dipakai di jalur tenant ini — dua sesi ini terpisah total sejak
+  // migration_separate_platform_admins.sql, bukan cuma dibedakan lewat satu
+  // flag di baris yang sama.
+  if (payload.type === 'platform') {
+    return res.status(401).json({ message: 'Token tidak valid untuk aplikasi ini.' });
+  }
+
   try {
     /* Status, peran, DAN token_version ikut dibaca ulang: akun yang
        dinonaktifkan setelah token terbit harus langsung kehilangan akses,
@@ -41,7 +49,7 @@ async function authenticate(req, res, next) {
        ditangguhkan (tenants.status = 'suspended') bisa langsung diblokir
        tanpa menunggu semua tokennya kedaluwarsa satu-satu. */
     const [rows] = await pool.query(
-      `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin,
+      `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version,
               u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus",
               r.name AS role, t.status AS tenant_status, t.plan
        FROM users u
@@ -82,7 +90,6 @@ async function authenticate(req, res, next) {
        'enterprise_custom' -- lihat catatan di migration_plans_catalog_db.sql). */
     req.user = {
       ...user,
-      is_platform_admin: Boolean(user.is_platform_admin),
       planName: getPlan(user.plan)?.name || user.plan,
       permissions: await loadPermissions(user),
     };
@@ -183,21 +190,57 @@ function requireRole(...allowedRoles) {
 }
 
 /**
- * Menjaga endpoint LINTAS TENANT untuk urusan billing (lihat
- * migration_billing_phase4.sql) — bukan Fase 5 (super-admin) penuh, cuma
- * cukup untuk menyetujui/menolak permintaan upgrade paket dari tenant mana
- * pun. Terpisah dari requirePermission/requireRole karena keduanya berlaku
- * DI DALAM satu tenant; ini justru menembus batas tenant, jadi sengaja
- * dibuat penjaga sendiri yang jelas namanya supaya tidak tertukar.
+ * Menjaga SELURUH endpoint admin platform (routes/platformRoutes.js,
+ * routes/platformAuthRoutes.js) — sesi TERPISAH TOTAL dari authenticate()
+ * tenant di atas sejak migration_separate_platform_admins.sql. Admin
+ * platform tidak lagi punya baris `users` sama sekali, jadi tidak bisa
+ * menumpang authenticate() lalu dicek satu flag seperti dulu
+ * (requirePlatformAdmin) — perlu jalur verifikasi & pemuatan akun sendiri.
  */
-function requirePlatformAdmin(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({ message: 'Belum terautentikasi.' });
+async function authenticatePlatform(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token tidak ditemukan. Silakan login.' });
   }
-  if (!req.user.is_platform_admin) {
-    return res.status(403).json({ message: 'Halaman ini khusus admin platform.' });
+
+  let payload;
+  try {
+    payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+  } catch (err) {
+    return res.status(401).json({ message: 'Token tidak valid atau kedaluwarsa.' });
   }
-  next();
+
+  // Token pengguna tenant TIDAK BOLEH dipakai di jalur admin platform ini —
+  // lihat penolakan simetrisnya (`type === 'platform'`) di authenticate().
+  if (payload.type !== 'platform') {
+    return res.status(401).json({ message: 'Token tidak valid untuk aplikasi ini.' });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, username, name, email, status, token_version
+       FROM platform_admins WHERE id = :id AND deleted_at IS NULL LIMIT 1`,
+      { id: payload.id }
+    );
+
+    const admin = rows[0];
+    if (!admin) {
+      return res.status(401).json({ message: 'Akun tidak ditemukan lagi. Silakan masuk kembali.' });
+    }
+    if (admin.status !== 'active') {
+      return res.status(403).json({ message: 'Akun Anda dinonaktifkan.' });
+    }
+    if (payload.tokenVersion !== admin.token_version) {
+      return res.status(401).json({ message: 'Sesi ini sudah tidak berlaku. Silakan masuk kembali.' });
+    }
+
+    req.platformAdmin = admin;
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
-module.exports = { authenticate, requirePermission, requireAnyPermission, requireRole, requirePlatformAdmin, loadPermissions, userCan };
+module.exports = { authenticate, requirePermission, requireAnyPermission, requireRole, authenticatePlatform, loadPermissions, userCan };

@@ -49,7 +49,7 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const [candidates] = await pool.query(
-    `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.password_hash, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role,
+    `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.password_hash, u.status, u.token_version, u.email_verified_at, r.name AS role,
             u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus"
      FROM users u JOIN roles r ON r.id = u.role_id
      WHERE (u.username = :identifier OR u.email = :identifier) AND u.deleted_at IS NULL AND u.status = 'active'
@@ -102,7 +102,7 @@ const login = asyncHandler(async (req, res) => {
     token,
     user: {
       id: user.id, tenantId: user.tenant_id, username: user.username, name: user.name,
-      email: user.email, role: user.role, permissions, is_platform_admin: Boolean(user.is_platform_admin),
+      email: user.email, role: user.role, permissions,
       loginCount, testimonialStatus,
     },
   });
@@ -531,7 +531,7 @@ const verifySignupEmail = asyncHandler(async (req, res) => {
     tenantSlug: tenantRow.slug,
     user: {
       id: user.id, tenantId: user.tenant_id, username: user.username, name: user.name,
-      email: user.email, role: 'admin', permissions: fullAccess(), is_platform_admin: false,
+      email: user.email, role: 'admin', permissions: fullAccess(),
     },
   });
 });
@@ -633,7 +633,7 @@ const googleLogin = asyncHandler(async (req, res) => {
     tenantId = tenant.id;
   }
 
-  const selectCols = `u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role,
+  const selectCols = `u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.email_verified_at, r.name AS role,
                       u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus"`;
 
   const [byGoogleId] = await pool.query(
@@ -695,7 +695,7 @@ const googleLogin = asyncHandler(async (req, res) => {
     token,
     user: {
       id: user.id, tenantId: user.tenant_id, username: user.username, name: user.name,
-      email: user.email, role: user.role, permissions, is_platform_admin: Boolean(user.is_platform_admin),
+      email: user.email, role: user.role, permissions,
       loginCount, testimonialStatus,
     },
   });
@@ -841,7 +841,7 @@ const googleSignup = asyncHandler(async (req, res) => {
     tenantSlug: slug,
     user: {
       id: userId, tenantId, username: finalUsername, name: profile.name,
-      email: profile.email, role: 'admin', permissions: fullAccess(), is_platform_admin: false,
+      email: profile.email, role: 'admin', permissions: fullAccess(),
     },
   });
 });

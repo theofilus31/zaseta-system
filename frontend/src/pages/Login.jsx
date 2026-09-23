@@ -79,11 +79,8 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const loggedInUser = await login(username, password);
-      // Admin platform langsung ke panelnya sendiri, bukan Dasbor tenant --
-      // supaya tidak ada "halaman seperti tenant" yang muncul dulu sebelum
-      // panel admin (lihat PlatformLayout.jsx / PlatformSidebar.jsx).
-      navigate(loggedInUser?.is_platform_admin ? '/platform/dashboard' : '/dashboard');
+      await login(username, password);
+      navigate('/dashboard');
     } catch (err) {
       if (err.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
         setNeedsVerification({ identifier: err.response.data.identifier || username });
@@ -104,8 +101,8 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const loggedInUser = await googleLogin(credential);
-      navigate(loggedInUser?.is_platform_admin ? '/platform/dashboard' : '/dashboard');
+      await googleLogin(credential);
+      navigate('/dashboard');
     } catch (err) {
       const data = err.response?.data;
       if (data?.code === 'NO_ACCOUNT_FOUND') {
@@ -300,9 +297,9 @@ export default function Login() {
         <VerifyEmailModal
           identifier={needsVerification.identifier}
           onClose={() => setNeedsVerification(null)}
-          onVerified={(loggedInUser) => {
+          onVerified={() => {
             setNeedsVerification(null);
-            navigate(loggedInUser?.is_platform_admin ? '/platform/dashboard' : '/dashboard');
+            navigate('/dashboard');
           }}
         />
       )}

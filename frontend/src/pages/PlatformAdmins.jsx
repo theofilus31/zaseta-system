@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import platformAxiosClient from '../api/platformAxiosClient.js';
+import { usePlatformAuth } from '../context/PlatformAuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -9,24 +9,24 @@ import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
-import { SearchInput, TextField, FormError } from '../components/ui/Form.jsx';
+import { TextField, FormError } from '../components/ui/Form.jsx';
 
 /**
  * ============================================================================
  *  KELOLA ADMIN PLATFORM — KHUSUS ADMIN PLATFORM (Fase 5 SaaS)
  * ============================================================================
- *  Lintas tenant. Memberi/mencabut `users.is_platform_admin` — akses yang
- *  sama dipakai requirePlatformAdmin di seluruh /platform/* (lihat
- *  middleware/auth.js). Pencarian pengguna LINTAS TENANT (bukan cuma tenant
- *  sendiri) karena admin platform bisa jadi siapa saja di perusahaan mana pun
- *  yang dipercaya — backend menjaga supaya akses admin platform TERAKHIR
- *  tidak pernah bisa dicabut (lihat platformController.setPlatformAdmin).
+ *  Sejak migration_separate_platform_admins.sql, admin platform hidup di
+ *  tabel `platform_admins` sendiri (TERPISAH TOTAL dari `users` demi
+ *  keamanan) — tidak ada lagi alur "beri akses ke pengguna tenant yang
+ *  sudah ada" (dulu lewat pencarian lintas tenant + PATCH .../platform-admin)
+ *  karena konsep itu sudah tidak berlaku sama sekali: akun admin platform
+ *  SELALU dibuat baru langsung di tabel ini lewat "Tambah Admin Baru", tidak
+ *  pernah "dipromosikan" dari akun tenant. Kata sandi awal dibuatkan sistem
+ *  & dikirim ke surel, persis pola userController.createUser.
  *
- *  Selain "beri akses ke pengguna tenant yang sudah ada", ada juga
- *  "Tambah Admin Baru" — bikin akun admin platform langsung dari nol
- *  (platformController.createPlatformAdmin), tanpa perlu tenant/pengguna
- *  yang sudah ada lebih dulu. Kata sandi awal dibuatkan sistem & dikirim ke
- *  surel, persis pola userController.createUser.
+ *  Backend menjaga admin platform AKTIF TERAKHIR tidak pernah bisa dihapus
+ *  (lihat platformController.removePlatformAdmin) — supaya tidak ada
+ *  keadaan di mana tidak ada siapa pun lagi yang bisa membuka panel ini.
  * ============================================================================
  */
 
@@ -47,7 +47,7 @@ function NewAdminModal({ onClose, onCreated }) {
     }
     setSaving(true);
     try {
-      const res = await axiosClient.post('/platform/admins', {
+      const res = await platformAxiosClient.post('/platform/admins', {
         name: form.name.trim(),
         email: form.email.trim(),
         username: form.username.trim().toLowerCase(),
@@ -91,52 +91,31 @@ function NewAdminModal({ onClose, onCreated }) {
 }
 
 export default function PlatformAdmins() {
-  const { user } = useAuth();
+  const { admin } = usePlatformAuth();
   const { pushSuccess, pushError } = useNotification();
 
   const [admins, setAdmins] = useState(null);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [showNewAdmin, setShowNewAdmin] = useState(false);
 
   function loadAdmins() {
-    axiosClient.get('/platform/admins')
+    platformAxiosClient.get('/platform/admins')
       .then((res) => setAdmins(res.data.admins))
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat daftar admin platform.'));
   }
 
   useEffect(loadAdmins, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) { setResults([]); return undefined; }
+  async function removeAdmin(target) {
+    if (!confirm(`Cabut akses admin platform dari ${target.name}?`)) return;
 
-    setSearching(true);
-    const timer = setTimeout(() => {
-      axiosClient.get('/platform/users/search', { params: { q } })
-        .then((res) => setResults(res.data.users))
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  async function setPlatformAdmin(targetUser, grant) {
-    const confirmMsg = grant
-      ? `Beri akses admin platform ke ${targetUser.name} (${targetUser.tenantName})?`
-      : `Cabut akses admin platform dari ${targetUser.name} (${targetUser.tenantName})?`;
-    if (!confirm(confirmMsg)) return;
-
-    setBusyId(targetUser.id);
+    setBusyId(target.id);
     try {
-      await axiosClient.patch(`/platform/users/${targetUser.id}/platform-admin`, { grant });
-      pushSuccess(grant ? `${targetUser.name} sekarang jadi admin platform.` : `Akses admin platform ${targetUser.name} dicabut.`);
+      const res = await platformAxiosClient.delete(`/platform/admins/${target.id}`);
+      pushSuccess(res.data.message);
       loadAdmins();
-      setResults((prev) => prev.map((r) => (r.id === targetUser.id ? { ...r, isPlatformAdmin: grant } : r)));
     } catch (err) {
-      pushError(err.response?.data?.message || 'Gagal mengubah akses admin platform.');
+      pushError(err.response?.data?.message || 'Gagal mencabut akses admin platform.');
     } finally {
       setBusyId(null);
     }
@@ -154,7 +133,7 @@ export default function PlatformAdmins() {
         </Button>}
       />
 
-      <Card className="mb-6">
+      <Card>
         <CardHeader title="Admin Platform Saat Ini" />
         {admins === null && <Skeleton className="h-32 w-full" />}
         {admins && admins.length === 0 && (
@@ -165,15 +144,17 @@ export default function PlatformAdmins() {
             {admins.map((a) => (
               <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-ink-200/70 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-800 truncate">{a.name}</p>
-                  <p className="text-xs text-ink-400 truncate">{a.email} — {a.tenantName}</p>
+                  <p className="text-sm font-semibold text-ink-800 truncate">
+                    {a.name} {a.id === admin?.id && <span className="text-xs font-normal text-ink-400">(Anda)</span>}
+                  </p>
+                  <p className="text-xs text-ink-400 truncate">{a.email} — @{a.username}</p>
                 </div>
                 <Button
                   size="xs"
                   variant="destructive"
                   loading={busyId === a.id}
-                  disabled={a.id === user.id && admins.length === 1}
-                  onClick={() => setPlatformAdmin({ id: a.id, name: a.name, tenantName: a.tenantName }, false)}
+                  disabled={admins.filter((x) => x.status === 'active').length === 1}
+                  onClick={() => removeAdmin(a)}
                 >
                   Cabut Akses
                 </Button>
@@ -181,40 +162,6 @@ export default function PlatformAdmins() {
             ))}
           </div>
         )}
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Beri Akses ke Pengguna Tenant"
-          description="Untuk pengguna yang SUDAH punya akun tenant — cari lewat nama, surel, atau nama pengguna. Untuk orang baru, pakai tombol Tambah Admin Baru di atas."
-        />
-        <SearchInput
-          placeholder="Ketik minimal 2 huruf…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <div className="mt-3 space-y-2">
-          {searching && <Skeleton className="h-14 w-full" />}
-          {!searching && query.trim().length >= 2 && results.length === 0 && (
-            <p className="text-sm text-ink-400 text-center py-4">Tidak ada pengguna yang cocok.</p>
-          )}
-          {!searching && results.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-ink-200/70 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-ink-800 truncate">{r.name}</p>
-                <p className="text-xs text-ink-400 truncate">{r.email} — {r.tenantName}</p>
-              </div>
-              {r.isPlatformAdmin ? (
-                <span className="text-xs font-medium text-brand-600 shrink-0">Sudah admin platform</span>
-              ) : (
-                <Button size="xs" loading={busyId === r.id} onClick={() => setPlatformAdmin(r, true)}>
-                  Beri Akses
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
       </Card>
 
       {showNewAdmin && (

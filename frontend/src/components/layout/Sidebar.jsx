@@ -57,10 +57,11 @@ export const navGroups = MODULE_GROUPS.map((group) => ({
    sidebar tenant ini (makanya panelnya kelihatan seperti "halaman tenant +
    satu menu tambahan"), sekarang punya kerangka & navigasi sendiri, lihat
    PlatformLayout.jsx + PlatformSidebar.jsx. Sidebar ini sendiri juga sudah
-   TIDAK PERNAH dirender untuk admin platform — ProtectedRoute (lihat
-   platform={true/false}) membalik akun is_platform_admin keluar dari semua
-   rute tenant sebelum sempat sampai ke sini, jadi tidak perlu jembatan
-   navigasi apa pun di komponen ini. */
+   TIDAK PERNAH dirender untuk admin platform — sesinya TERPISAH TOTAL lewat
+   PlatformAuthContext.jsx (lihat migration_separate_platform_admins.sql),
+   akun admin platform bahkan tidak punya `user` tenant sama sekali untuk
+   dicek ProtectedRoute di sini, jadi tidak perlu jembatan navigasi apa pun
+   di komponen ini. */
 export const navItems = navGroups.flatMap((g) => g.items);
 
 /* Dasbor disematkan di atas akordeon, bukan ditumpuk sebagai isi kelompok

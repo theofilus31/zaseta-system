@@ -4,7 +4,7 @@ require('./helpers/teardown');
 const pool = require('../src/config/db');
 const { submitTestimonial, skipTestimonial, listPublicTestimonials } = require('../src/controllers/testimonialController');
 const { listTestimonials, approveTestimonial, rejectTestimonial } = require('../src/controllers/platformController');
-const { createTestTenant, dropTestTenant, createTestUser } = require('./helpers/testTenant');
+const { createTestTenant, dropTestTenant, createTestUser, createTestPlatformAdmin, dropTestPlatformAdmin } = require('./helpers/testTenant');
 const { mockReq, runMiddleware } = require('./helpers/mockReqRes');
 
 async function userRow(userId) {
@@ -79,7 +79,8 @@ test('platform: approve/reject testimoni, dan tidak bisa ditinjau dua kali', asy
   const tenantId = await createTestTenant('free');
   t.after(() => dropTestTenant(tenantId));
   const userId = await createTestUser(tenantId);
-  const adminId = await createTestUser(tenantId);
+  const adminId = await createTestPlatformAdmin();
+  t.after(() => dropTestPlatformAdmin(adminId));
 
   const submitted = await runMiddleware(submitTestimonial, mockReq({ tenantId, userId, body: { rating: 3, message: 'Lumayan' } }));
   const testimonialId = submitted.res.body.id;
@@ -123,7 +124,8 @@ test('platform: reject testimoni tidak membuatnya muncul di daftar publik', asyn
   const tenantId = await createTestTenant('free');
   t.after(() => dropTestTenant(tenantId));
   const userId = await createTestUser(tenantId);
-  const adminId = await createTestUser(tenantId);
+  const adminId = await createTestPlatformAdmin();
+  t.after(() => dropTestPlatformAdmin(adminId));
 
   const submitted = await runMiddleware(submitTestimonial, mockReq({ tenantId, userId, body: { rating: 1, message: 'Kurang puas' } }));
   await runMiddleware(rejectTestimonial, mockReq({ userId: adminId, params: { id: String(submitted.res.body.id) } }));

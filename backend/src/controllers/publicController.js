@@ -189,11 +189,11 @@ const submitContact = asyncHandler(async (req, res) => {
   const categoryLabel = CONTACT_CATEGORIES[category] || CONTACT_CATEGORIES.lainnya;
 
   const [platformAdmins] = await pool.query(
-    `SELECT email FROM users WHERE is_platform_admin = TRUE AND status = 'active' AND deleted_at IS NULL`
+    `SELECT email FROM platform_admins WHERE status = 'active' AND deleted_at IS NULL`
   );
   if (platformAdmins.length === 0) {
     // Tidak ada admin platform untuk dikirimi — bukan salah pengirim pesan.
-    console.error('Gagal mengirim pesan kontak: tidak ada users.is_platform_admin=1 di database.');
+    console.error('Gagal mengirim pesan kontak: tidak ada baris platform_admins yang aktif di database.');
     return res.status(503).json({ message: 'Formulir kontak sedang tidak tersedia. Coba lagi nanti atau hubungi kami langsung lewat surel.' });
   }
 

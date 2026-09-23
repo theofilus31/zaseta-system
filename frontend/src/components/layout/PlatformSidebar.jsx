@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext.jsx';
+import { usePlatformAuth } from '../../context/PlatformAuthContext.jsx';
 import ProductBrandMark from '../ProductBrandMark.jsx';
 
 /**
@@ -10,8 +10,10 @@ import ProductBrandMark from '../ProductBrandMark.jsx';
  *  Sengaja BUKAN varian dari Sidebar.jsx tenant secara STRUKTUR — dulu panel
  *  admin platform cuma menumpang di sidebar tenant (satu grup menu
  *  ditambahkan di bawah), jadi kelihatan seperti "halaman tenant + satu menu
- *  tambahan" padahal ini konteks yang beda sama sekali (lintas tenant, dijaga
- *  users.is_platform_admin, BUKAN matriks izin per-menu biasa). Grup menu
+ *  tambahan" padahal ini konteks yang beda sama sekali (lintas tenant, sesi
+ *  admin platform terpisah total lewat PlatformAuthContext.jsx sejak
+ *  migration_separate_platform_admins.sql, BUKAN matriks izin per-menu
+ *  biasa). Grup menu
  *  statis (bukan akordeon) dan identitas ZASETA sendiri (ProductBrandMark,
  *  bukan BrandLogo tenant) tetap dipertahankan sebagai penanda "kamu sedang
  *  keluar dari konteks satu perusahaan pelanggan".
@@ -60,12 +62,12 @@ const NAV_GROUPS = [
 export const platformNavItems = NAV_GROUPS.flatMap((g) => g.items);
 
 export default function PlatformSidebar({ onNavigate }) {
-  const { user, logout } = useAuth();
+  const { admin, logout } = usePlatformAuth();
   const navigate = useNavigate();
 
   function handleLogout() {
     logout();
-    navigate('/login');
+    navigate('/platform/login');
   }
 
   return (
@@ -157,10 +159,10 @@ export default function PlatformSidebar({ onNavigate }) {
                          flex items-center justify-center text-white font-semibold text-sm shadow-sm"
               aria-hidden="true"
             >
-              {user?.name?.[0]?.toUpperCase() || '?'}
+              {admin?.name?.[0]?.toUpperCase() || '?'}
             </span>
             <span className="flex-1 min-w-0">
-              <span className="block text-[13px] font-semibold text-white truncate">{user?.name}</span>
+              <span className="block text-[13px] font-semibold text-white truncate">{admin?.name}</span>
               <span className="block text-[11px] text-brand-300 truncate">Admin Platform</span>
             </span>
           </button>

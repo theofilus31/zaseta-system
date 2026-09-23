@@ -27,4 +27,27 @@ function signToken(user) {
   );
 }
 
-module.exports = { signToken };
+/**
+ * Menerbitkan JWT untuk admin platform — BENTUK BERBEDA dari signToken() di
+ * atas (tidak ada tenantId/role/permissions sama sekali, dan `type: 'platform'`
+ * eksplisit di payload) supaya token admin platform dan token pengguna tenant
+ * tidak bisa saling dipakai silang. middleware/auth.js authenticate() (tenant)
+ * menolak token dengan `type === 'platform'`, dan authenticatePlatform()
+ * menolak token TANPA `type === 'platform'` — dua arah, bukan cuma satu.
+ */
+function signPlatformToken(admin) {
+  return jwt.sign(
+    {
+      id: admin.id,
+      username: admin.username,
+      name: admin.name,
+      email: admin.email,
+      tokenVersion: admin.token_version,
+      type: 'platform',
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h', algorithm: 'HS256' }
+  );
+}
+
+module.exports = { signToken, signPlatformToken };

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import PlatformLayout from '../components/PlatformLayout.jsx';
-import axiosClient from '../api/axiosClient.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import platformAxiosClient from '../api/platformAxiosClient.js';
+import { usePlatformAuth } from '../context/PlatformAuthContext.jsx';
 import { useNotification } from '../context/NotificationContext.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import Card, { CardHeader } from '../components/ui/Card.jsx';
@@ -13,20 +13,15 @@ import { TextField, FormError } from '../components/ui/Form.jsx';
  * ============================================================================
  *  AKUN SAYA — KHUSUS ADMIN PLATFORM (Fase 5 SaaS)
  * ============================================================================
- *  Satu-satunya jalan admin platform mengganti kata sandi & surelnya sendiri
- *  lewat web setelah panel ini dipisah total dari aplikasi tenant (lihat
- *  catatan `platform` di ProtectedRoute.jsx) — akun ini tidak lagi bisa
- *  membuka /profile (halaman itu bagian dari aplikasi tenant).
- *
- *  Ganti nama, nama pengguna, kata sandi & surel semuanya lewat endpoint
- *  /api/profile yang sudah ada (PUT /, PUT /username, POST /email/otp/request,
- *  POST /email/otp/verify) — bukan endpoint baru. PUT /profile dan endpoint
- *  OTP dijaga cuma `authenticate` (lintas peran); PUT /profile/username
- *  dijaga requirePermission('users','edit'), tapi itu selalu terpenuhi untuk
- *  admin platform — akunnya selalu dibuat dengan role 'admin' (lihat
- *  bootstrap-super-admin.js & platformController.createPlatformAdmin), dan
- *  middleware/auth.js loadPermissions() memberi fullAccess() ke role itu
- *  tanpa perlu baris user_permissions sama sekali.
+ *  Satu-satunya jalan admin platform mengganti nama/nama pengguna/surel/kata
+ *  sandi sendiri lewat web. Sejak migration_separate_platform_admins.sql,
+ *  akun ini hidup di tabel `platform_admins` sendiri (TIDAK PUNYA baris
+ *  `users` sama sekali) — tidak bisa lagi menumpang endpoint /api/profile
+ *  tenant, jadi dipakai endpoint sendiri: /api/platform-auth/profile (PUT /,
+ *  PUT /username, POST /email/otp/request, POST /email/otp/verify), lihat
+ *  controllers/platformProfileController.js. Semuanya dijaga
+ *  `authenticatePlatform` — tidak ada lagi pertimbangan izin per-menu di
+ *  sini, admin platform selalu berakses penuh ke akunnya sendiri.
  * ============================================================================
  */
 
@@ -45,7 +40,7 @@ function StepIndicator({ step }) {
   );
 }
 export default function PlatformAccount() {
-  const { user, setUser } = useAuth();
+  const { admin, setAdmin } = usePlatformAuth();
   const { pushSuccess, pushError } = useNotification();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -60,10 +55,9 @@ export default function PlatformAccount() {
   const [nameError, setNameError] = useState('');
   const [savingName, setSavingName] = useState(false);
 
-  // Ganti nama pengguna — lewat PUT /api/profile/username, endpoint yang sama
-  // dipakai Profile.jsx tenant untuk admin ganti username sendiri/orang lain.
-  // Dijaga requirePermission('users','edit'); admin platform selalu punya
-  // izin penuh (lihat scripts/bootstrap-super-admin.js / fullAccess()).
+  // Ganti nama pengguna — lewat PUT /api/platform-auth/profile/username,
+  // SELALU untuk diri sendiri (beda dari Profile.jsx tenant yang bisa
+  // mengubah username orang lain) — dijaga authenticatePlatform saja.
   const [usernameEditMode, setUsernameEditMode] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
@@ -96,14 +90,14 @@ export default function PlatformAccount() {
 
     setSavingPassword(true);
     try {
-      const res = await axiosClient.put('/profile', { name: user.name, currentPassword, newPassword });
-      const updatedUser = { ...user, ...res.data.user };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      const res = await platformAxiosClient.put('/platform-auth/profile', { name: admin.name, currentPassword, newPassword });
+      const updatedAdmin = { ...admin, ...res.data.admin };
+      setAdmin(updatedAdmin);
+      localStorage.setItem('platformAdmin', JSON.stringify(updatedAdmin));
       // Ganti kata sandi mencabut semua token lama di server -- token baru
       // dari respons ini menggantikannya supaya sesi ini sendiri tidak putus.
       if (res.data.token) {
-        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('platformToken', res.data.token);
       }
       setCurrentPassword('');
       setNewPassword('');
@@ -117,7 +111,7 @@ export default function PlatformAccount() {
   }
 
   function startNameEdit() {
-    setNewName(user?.name || '');
+    setNewName(admin?.name || '');
     setNameError('');
     setNameEditMode(true);
   }
@@ -136,17 +130,17 @@ export default function PlatformAccount() {
       setNameError('Nama wajib diisi.');
       return;
     }
-    if (trimmed === user.name) {
+    if (trimmed === admin.name) {
       setNameEditMode(false);
       return;
     }
 
     setSavingName(true);
     try {
-      const res = await axiosClient.put('/profile', { name: trimmed });
-      const updatedUser = { ...user, ...res.data.user };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      const res = await platformAxiosClient.put('/platform-auth/profile', { name: trimmed });
+      const updatedAdmin = { ...admin, ...res.data.admin };
+      setAdmin(updatedAdmin);
+      localStorage.setItem('platformAdmin', JSON.stringify(updatedAdmin));
       setNameEditMode(false);
       pushSuccess('Nama berhasil diperbarui.');
     } catch (err) {
@@ -157,7 +151,7 @@ export default function PlatformAccount() {
   }
 
   function startUsernameEdit() {
-    setNewUsername(user?.username || '');
+    setNewUsername(admin?.username || '');
     setUsernameError('');
     setUsernameEditMode(true);
   }
@@ -176,17 +170,17 @@ export default function PlatformAccount() {
       setUsernameError('Hanya huruf kecil, angka, garis bawah (_), dan tanda minus (-). Minimal 3 karakter.');
       return;
     }
-    if (trimmed === user.username) {
+    if (trimmed === admin.username) {
       setUsernameEditMode(false);
       return;
     }
 
     setSavingUsername(true);
     try {
-      await axiosClient.put('/profile/username', { userId: user.id, username: trimmed });
-      const updatedUser = { ...user, username: trimmed };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      await platformAxiosClient.put('/platform-auth/profile/username', { username: trimmed });
+      const updatedAdmin = { ...admin, username: trimmed };
+      setAdmin(updatedAdmin);
+      localStorage.setItem('platformAdmin', JSON.stringify(updatedAdmin));
       setUsernameEditMode(false);
       pushSuccess('Nama pengguna berhasil diperbarui.');
     } catch (err) {
@@ -217,7 +211,7 @@ export default function PlatformAccount() {
 
     setSendingOtp(true);
     try {
-      await axiosClient.post('/profile/email/otp/request', { newEmail });
+      await platformAxiosClient.post('/platform-auth/profile/email/otp/request', { newEmail });
       setEmailStep('otp');
       pushSuccess(`Kode OTP dikirim ke ${newEmail}. Cek kotak masuk atau folder spam.`);
     } catch (err) {
@@ -234,10 +228,10 @@ export default function PlatformAccount() {
 
     setVerifyingOtp(true);
     try {
-      const res = await axiosClient.post('/profile/email/otp/verify', { otp: otpCode });
-      const updatedUser = { ...user, ...res.data.user };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      const res = await platformAxiosClient.post('/platform-auth/profile/email/otp/verify', { otp: otpCode });
+      const updatedAdmin = { ...admin, ...res.data.admin };
+      setAdmin(updatedAdmin);
+      localStorage.setItem('platformAdmin', JSON.stringify(updatedAdmin));
       cancelEmailEdit();
       pushSuccess('Surel berhasil diperbarui.');
     } catch (err) {
@@ -274,7 +268,7 @@ export default function PlatformAccount() {
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-xs text-ink-400 mb-1">Nama</p>
-              <p className="text-sm font-semibold text-ink-800 truncate">{user?.name}</p>
+              <p className="text-sm font-semibold text-ink-800 truncate">{admin?.name}</p>
             </div>
             <Button size="sm" variant="secondary" onClick={startNameEdit}>Ganti</Button>
           </div>
@@ -301,7 +295,7 @@ export default function PlatformAccount() {
         ) : (
           <div className="flex items-center gap-3">
             <p className="flex-1 min-w-0 truncate rounded-xl border border-ink-200 bg-ink-50 px-3.5 py-2.5 text-sm font-mono text-ink-700">
-              {user?.username}
+              {admin?.username}
             </p>
             <Button size="sm" variant="secondary" onClick={startUsernameEdit}>Ganti</Button>
           </div>
@@ -317,7 +311,7 @@ export default function PlatformAccount() {
         {emailStep === 'idle' && (
           <div className="flex items-center gap-3">
             <p className="flex-1 min-w-0 truncate rounded-xl border border-ink-200 bg-ink-50 px-3.5 py-2.5 text-sm text-ink-700">
-              {user?.email}
+              {admin?.email}
             </p>
             <Button size="sm" variant="secondary" onClick={startEmailEdit}>Ganti</Button>
           </div>

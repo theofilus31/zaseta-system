@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { usePlatformAuth } from '../context/PlatformAuthContext.jsx';
 import Card from './ui/Card.jsx';
 import Button from './ui/Button.jsx';
 import EmptyState from './ui/EmptyState.jsx';
@@ -48,32 +49,39 @@ function AccessDenied({ module, action }) {
  *   action   — aksi minimal yang dibutuhkan halaman ini; 'view' untuk halaman
  *              daftar/detail, 'create'/'edit' untuk halaman form
  *   platform — true untuk rute /platform/* (lintas tenant, Fase 5 SaaS).
- *              Dua arah sekaligus: admin platform TIDAK BOLEH masuk ke rute
- *              tenant biasa (selalu dibalik ke panelnya sendiri, akun ini
- *              memang sengaja hanya mengurus panel admin, bukan aplikasi
- *              tenant), dan sebaliknya pengguna tenant biasa tidak boleh
- *              masuk ke rute /platform/*.
+ *              Sesi admin platform TERPISAH TOTAL dari sesi tenant sejak
+ *              migration_separate_platform_admins.sql (lihat
+ *              PlatformAuthContext.jsx) — tidak ada lagi satu objek sesi
+ *              dengan satu flag yang dibaca dua arah seperti dulu, jadi
+ *              cabangnya didelegasikan ke komponen terpisah di bawah
+ *              (PlatformProtectedRoute) yang membaca sesi platform sendiri.
  *
  * Tanpa `module`, halaman hanya butuh pengguna yang sudah masuk (mis. Profil).
  *
  * Catatan: pembatasan di sini murni demi tampilan — supaya orang tidak mendarat
  * di halaman yang datanya pasti ditolak. Otorisasi sesungguhnya tetap dicek
  * backend pada setiap endpoint (middleware/auth.js → requirePermission /
- * requirePlatformAdmin), jadi melewati penjaga ini lewat devtools tidak
+ * authenticatePlatform), jadi melewati penjaga ini lewat devtools tidak
  * memberi akses apa pun.
  */
 export default function ProtectedRoute({ children, module, action = 'view', platform = false }) {
+  if (platform) return <PlatformProtectedRoute>{children}</PlatformProtectedRoute>;
+
   const { user, can } = useAuth();
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (platform !== Boolean(user.is_platform_admin)) {
-    return <Navigate to={user.is_platform_admin ? '/platform/dashboard' : '/dashboard'} replace />;
-  }
-
   if (module && !can(module, action)) {
     return <AccessDenied module={module} action={action} />;
   }
+
+  return children;
+}
+
+function PlatformProtectedRoute({ children }) {
+  const { admin } = usePlatformAuth();
+
+  if (!admin) return <Navigate to="/platform/login" replace />;
 
   return children;
 }
