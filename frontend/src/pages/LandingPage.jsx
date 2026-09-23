@@ -415,9 +415,23 @@ function HeroLockCluster() {
           Tailwind memberi <img> itu sendiri `max-width:100%` — 100% dari
           kontainer yang lebarnya masih dihitung "auto" beresolusi ke 0,
           gambarnya ke-render 0px lebar. Begitu wrapper diberi lebar pasti,
-          masalahnya hilang total. */}
+          masalahnya hilang total.
+
+          `hidden sm:block` — DISEMBUNYIKAN di layar <640px. Diverifikasi
+          lewat getBoundingClientRect di viewport HP sungguhan (~408px):
+          offset -top-12 (dikalibrasi untuk sm:-top-[104px] di layar lebih
+          lebar, di mana jarak anchor klaster ke kartu jauh lebih lega) di
+          mobile MELEBIHI jarak anchor `-bottom-2` ke tepi bawah kartu mockup
+          — logo mendarat ~40px DI DALAM kartu, menindih baris terakhir
+          daftar aset ("Proyektor Epson EB-X06"), bukan mengambang bersih di
+          luarnya seperti gembok di sebelahnya. Gembok & tiga chip lain semua
+          sengaja "mengintip" cuma beberapa px di tepi kartu (pola yang
+          disengaja, lihat catatan ORBIT_ASSETS) — logo ini SATU-SATUNYA yang
+          overshoot separuh tingginya sendiri, jadi disembunyikan saja di
+          mobile daripada dipaksa muat di ruang yang memang tidak cukup;
+          identitas ZASETA sudah cukup terwakili lewat logo di header. */}
       <motion.div
-        className="absolute left-0 -top-12 h-9 w-9 sm:-left-[18px] sm:-top-[104px] sm:h-10 sm:w-10"
+        className="hidden absolute left-0 -top-12 h-9 w-9 sm:-left-[18px] sm:-top-[104px] sm:block sm:h-10 sm:w-10"
         initial={{ opacity: 0, scale: 0.6 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 14, delay: 0.35 }}
