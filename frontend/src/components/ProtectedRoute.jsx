@@ -5,7 +5,7 @@ import { usePlatformAuth } from '../context/PlatformAuthContext.jsx';
 import Card from './ui/Card.jsx';
 import Button from './ui/Button.jsx';
 import EmptyState from './ui/EmptyState.jsx';
-import { MODULE_BY_KEY } from '../constants/modules.js';
+import { MODULE_BY_KEY, FREE_LOCKED_MODULES } from '../constants/modules.js';
 import { useLayoutWidth } from '../context/LayoutWidthContext.jsx';
 
 /* Komponen terpisah (bukan cuma sebuah `if` di tengah ProtectedRoute) supaya
@@ -42,6 +42,31 @@ function AccessDenied({ module, action }) {
   );
 }
 
+/* Sama alasannya dengan AccessDenied di atas — komponen terpisah supaya
+   useLayoutWidth() tidak dipanggil bersyarat di dalam ProtectedRoute. */
+function FeatureLocked({ module }) {
+  useLayoutWidth('narrow');
+
+  const label = MODULE_BY_KEY[module]?.label || module;
+
+  return (
+    <Card className="mt-6">
+      <EmptyState
+        icon="fa-lock"
+        tone="warning"
+        title={`${label} butuh paket berbayar`}
+        description={`Fitur ini tidak tersedia di paket Free perusahaan Anda. Tingkatkan paket langganan untuk membuka ${label}.`}
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button to="/billing" size="sm">Upgrade Plan</Button>
+            <Button to="/dashboard" variant="secondary" size="sm">Kembali ke Dasbor</Button>
+          </div>
+        }
+      />
+    </Card>
+  );
+}
+
 /**
  * Penjaga rute berbasis izin per-menu.
  *
@@ -58,6 +83,13 @@ function AccessDenied({ module, action }) {
  *
  * Tanpa `module`, halaman hanya butuh pengguna yang sudah masuk (mis. Profil).
  *
+ * Setelah lolos izin per-menu, `module` yang masuk FREE_LOCKED_MODULES
+ * (constants/modules.js) masih bisa diblokir SEKALI LAGI kalau tenant sedang
+ * di paket Free — beda dari pengecekan izin di atas (siapa boleh apa DI
+ * DALAM tenant), ini soal paket LANGGANANNYA tidak mencakup modul ini sama
+ * sekali (lihat FeatureLocked di atas & FREE_LOCKED_MODULES di
+ * backend/src/middleware/planLimits.js untuk penegakan sesungguhnya).
+ *
  * Catatan: pembatasan di sini murni demi tampilan — supaya orang tidak mendarat
  * di halaman yang datanya pasti ditolak. Otorisasi sesungguhnya tetap dicek
  * backend pada setiap endpoint (middleware/auth.js → requirePermission /
@@ -73,6 +105,10 @@ export default function ProtectedRoute({ children, module, action = 'view', plat
 
   if (module && !can(module, action)) {
     return <AccessDenied module={module} action={action} />;
+  }
+
+  if (module && user.plan === 'free' && FREE_LOCKED_MODULES.has(module)) {
+    return <FeatureLocked module={module} />;
   }
 
   return children;

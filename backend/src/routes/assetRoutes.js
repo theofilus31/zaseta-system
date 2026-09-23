@@ -6,7 +6,7 @@ const attachCtrl = require('../controllers/attachmentController');
 const reminderCtrl = require('../controllers/reminderController');
 const maintenanceCtrl = require('../controllers/maintenanceController');
 const { authenticate, requirePermission } = require('../middleware/auth');
-const { checkAssetLimit } = require('../middleware/planLimits');
+const { checkAssetLimit, requireFeature } = require('../middleware/planLimits');
 const upload = require('../middleware/upload');
 const uploadAttachment = require('../middleware/uploadAttachment');
 
@@ -32,7 +32,10 @@ router.delete('/:id', requirePermission('assets', 'delete'), ctrl.deleteAsset);
 
 router.get('/:id/qr/print', requirePermission('assets', 'view'), qrCtrl.getAssetQr);
 router.post('/:id/qr/regenerate', requirePermission('assets', 'edit'), qrCtrl.regenerateAssetQr);
-router.post('/qr/batch', requirePermission('barcode', 'view'), qrCtrl.getAssetsQrBatch);
+// Cetak Kode Batang MASSAL dikunci di paket Free (lihat FREE_LOCKED_MODULES di
+// middleware/planLimits.js) — cetak SATUAN di /:id/qr/print di atas tetap
+// terbuka untuk semua paket, cuma versi massalnya yang berbayar.
+router.post('/qr/batch', requirePermission('barcode', 'view'), requireFeature('barcode'), qrCtrl.getAssetsQrBatch);
 
 // Lampiran berkas — mengunggah dihitung sebagai "create" (menambah data baru),
 // mengunduh cukup izin "view" karena tidak mengubah apa pun.

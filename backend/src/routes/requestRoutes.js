@@ -2,8 +2,12 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/requestController');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { requireFeature } = require('../middleware/planLimits');
 
 router.use(authenticate);
+// Seluruh modul Permintaan Aset dikunci di paket Free — lihat catatan
+// yang sama di opnameRoutes.js.
+router.use(requireFeature('requests'));
 
 router.get('/', requirePermission('requests', 'view'), ctrl.listRequests);
 router.post('/', requirePermission('requests', 'create'), ctrl.createRequest);

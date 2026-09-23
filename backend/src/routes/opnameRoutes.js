@@ -2,8 +2,13 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/opnameController');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { requireFeature } = require('../middleware/planLimits');
 
 router.use(authenticate);
+// Seluruh modul Stok Opname dikunci di paket Free (lihat FREE_LOCKED_MODULES
+// di middleware/planLimits.js) — dicek di sini, bukan cuma di /:id/scan atau
+// /:id/finish, supaya bahkan GET /opnames (daftar sesi) ikut tertutup.
+router.use(requireFeature('opname'));
 
 router.get('/', requirePermission('opname', 'view'), ctrl.listOpnames);
 // Harus sebelum '/:id' — "active" bukan id sesi.

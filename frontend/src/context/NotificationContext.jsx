@@ -78,12 +78,15 @@ export function NotificationProvider({ children }) {
   const pushSuccess = useCallback((message) => push(message, 'success'), [push]);
   const pushInfo = useCallback((message) => push(message, 'info'), [push]);
 
-  /** Galat batas paket (kode PLAN_LIMIT_REACHED dari planLimits.js) SELALU
-   *  dapat CTA "Upgrade Plan" — satu tempat supaya setiap form pembuatan
-   *  data (aset/pengguna/lokasi) tidak perlu menyusun action-nya sendiri. */
+  /** Galat batas paket (kode PLAN_LIMIT_REACHED dari planLimits.js) ATAU
+   *  fitur yang dikunci paket Free (PLAN_FEATURE_LOCKED, modul UTUH seperti
+   *  Stok Opname/Barang Habis Pakai/dll — lihat ProtectedRoute.jsx untuk
+   *  penjagaan yang sama di sisi tampilan) SELALU dapat CTA "Upgrade Plan" —
+   *  satu tempat supaya setiap form pembuatan data tidak perlu menyusun
+   *  action-nya sendiri. */
   const pushLimitError = useCallback((err, fallbackMessage) => {
     const data = err?.response?.data;
-    if (data?.code === 'PLAN_LIMIT_REACHED') {
+    if (data?.code === 'PLAN_LIMIT_REACHED' || data?.code === 'PLAN_FEATURE_LOCKED') {
       push(data.message, 'error', { label: 'Upgrade Plan', to: data.upgradeUrl || '/billing' });
     } else {
       push(data?.message || fallbackMessage, 'error');

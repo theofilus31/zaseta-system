@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, Database, BarChart3, Settings2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useTabs } from '../../context/TabsContext.jsx';
-import { MODULES, MODULE_GROUPS, accessLabel } from '../../constants/modules.js';
+import { MODULES, MODULE_GROUPS, accessLabel, FREE_LOCKED_MODULES } from '../../constants/modules.js';
 import { NAV_ICONS, DEFAULT_NAV_ICON } from '../../constants/navIcons.js';
 import { useBranding, BrandLogo } from '../../context/BrandingContext.jsx';
 import { cn } from '../../utils/cn.js';
@@ -84,7 +84,12 @@ const GROUP_ICONS = {
    setActiveNav() (lihat useTabs()) supaya menukar isi TAB AKTIF, bukan
    membuka navigasi router lepas dari sistem tab. Status aktifnya dihitung
    manual dari lokasi sekarang, persis seperti yang dulu dilakukan NavLink. */
-function AccordionNavButton({ active, icon: Icon, onClick, children }) {
+/* `locked` (paket Free tidak mencakup modul ini — lihat FREE_LOCKED_MODULES)
+   TIDAK menonaktifkan tombolnya: menu tetap bisa diklik dan mengarah ke
+   halamannya sendiri, yang lalu menampilkan banner "Upgrade Plan" (lihat
+   FeatureLocked di ProtectedRoute.jsx) — jadi gembok di sini murni penanda
+   sebelum diklik, bukan pemblokir. */
+function AccordionNavButton({ active, icon: Icon, locked, onClick, children }) {
   return (
     <button
       type="button"
@@ -95,7 +100,10 @@ function AccordionNavButton({ active, icon: Icon, onClick, children }) {
       )}
     >
       <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-white' : 'text-brand-300'}`} aria-hidden="true" />
-      <span className="truncate">{children}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {locked && (
+        <i className="fas fa-lock shrink-0 text-[10px] text-brand-400" aria-hidden="true" title="Butuh paket berbayar" />
+      )}
     </button>
   );
 }
@@ -272,6 +280,7 @@ export default function Sidebar() {
                           <AccordionNavButton
                             active={isItemActive(item)}
                             icon={NAV_ICONS[item.module] || DEFAULT_NAV_ICON}
+                            locked={user?.plan === 'free' && FREE_LOCKED_MODULES.has(item.module)}
                             onClick={() => goTo(item)}
                           >
                             {item.label}

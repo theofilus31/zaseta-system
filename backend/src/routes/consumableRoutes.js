@@ -3,8 +3,12 @@ const router = express.Router();
 const ctrl = require('../controllers/consumableController');
 const qrCtrl = require('../controllers/consumableQrController');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { requireFeature } = require('../middleware/planLimits');
 
 router.use(authenticate);
+// Seluruh modul Barang Habis Pakai dikunci di paket Free — lihat catatan
+// yang sama di opnameRoutes.js.
+router.use(requireFeature('consumables'));
 
 router.get('/', requirePermission('consumables', 'view'), ctrl.listConsumables);
 router.post('/', requirePermission('consumables', 'create'), ctrl.createConsumable);

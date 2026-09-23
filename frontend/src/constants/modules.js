@@ -119,6 +119,15 @@ export const MODULES = [
 
 export const MODULE_BY_KEY = Object.fromEntries(MODULES.map((m) => [m.key, m]));
 
+/**
+ * Modul UTUH yang dikunci di paket Free — cermin dari FREE_LOCKED_MODULES di
+ * backend/src/middleware/planLimits.js (penegakan sesungguhnya ada di sana;
+ * daftar ini HANYA untuk tampilan, lihat ProtectedRoute.jsx & Sidebar.jsx).
+ * Beda dari batas jumlah (maxAssets/dst, lihat plans.js) — ini menutup
+ * modulnya sama sekali, bukan membatasi berapa banyak yang boleh dibuat.
+ */
+export const FREE_LOCKED_MODULES = new Set(['barcode', 'opname', 'consumables', 'requests', 'custom_fields']);
+
 /** Urutan kelompok menu di sidebar dan di matriks izin. */
 export const MODULE_GROUPS = ['Aset', 'Data Acuan', 'Laporan', 'Administrasi'];
 
