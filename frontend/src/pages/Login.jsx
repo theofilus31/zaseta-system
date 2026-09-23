@@ -191,9 +191,11 @@ export default function Login() {
             animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
-            <p className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand-600 mb-3">
-              {PRODUCT_NAME}
-            </p>
+            {/* Lencana nama produk di panel kanan ini SENGAJA dihapus (bukan
+                cuma disembunyikan di mobile) -- sama seperti TenantLogin.jsx:
+                di desktop, identitas ZASETA sudah cukup terwakili lewat judul
+                besar di panel kiri; di mobile, logo (baris lg:hidden di atas)
+                sudah cukup, tanpa perlu lencana teks tambahan. */}
             <h1 className="text-2xl md:text-3xl font-black text-ink-900 tracking-tight mb-1">Selamat datang kembali</h1>
             <p className="text-ink-500 mb-8">Masuk dengan akun yang diberikan administrator.</p>
 
