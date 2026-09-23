@@ -1,11 +1,7 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import LandingPage from './pages/LandingPage.jsx';
-import PricingPage from './pages/PricingPage.jsx';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx';
-import TermsOfServicePage from './pages/TermsOfServicePage.jsx';
-import LineChart9Demo from './components/ui/sc-line-charts-9-demo.tsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import TenantLogin from './pages/TenantLogin.jsx';
@@ -24,36 +20,49 @@ import AuditLogPage from './pages/AuditLogPage.jsx';
 import TrashPage from './pages/TrashPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import Profile from './pages/Profile.jsx';
-import QRPrintPage from './pages/QRPrintPage.jsx';
-import BatchQrPrintPage from './pages/BatchQrPrintPage.jsx';
 import StockOpnamePage from './pages/StockOpnamePage.jsx';
 import StockOpnameDetail from './pages/StockOpnameDetail.jsx';
-import BastPrintPage from './pages/BastPrintPage.jsx';
 import ConsumableList from './pages/ConsumableList.jsx';
 import ConsumableDetail from './pages/ConsumableDetail.jsx';
-import ConsumableQRPrintPage from './pages/ConsumableQRPrintPage.jsx';
 import RequestList from './pages/RequestList.jsx';
 import RequestDetail from './pages/RequestDetail.jsx';
-import DepreciationReportPage from './pages/DepreciationReportPage.jsx';
 import PublicScanPage from './pages/PublicScanPage.jsx';
 import ConsumablePublicScanPage from './pages/ConsumablePublicScanPage.jsx';
 import PublicRequestPage from './pages/PublicRequestPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
-import InvoicePrintPage from './pages/InvoicePrintPage.jsx';
-import PlatformDashboard from './pages/PlatformDashboard.jsx';
-import PlatformTenants from './pages/PlatformTenants.jsx';
-import PlatformAdmins from './pages/PlatformAdmins.jsx';
-import PlatformRevenue from './pages/PlatformRevenue.jsx';
-import PlatformPlans from './pages/PlatformPlans.jsx';
-import PlatformActivity from './pages/PlatformActivity.jsx';
-import PlatformAccount from './pages/PlatformAccount.jsx';
-import PlatformUsers from './pages/PlatformUsers.jsx';
-import PlatformAuditLog from './pages/PlatformAuditLog.jsx';
-import PlatformIpWhitelist from './pages/PlatformIpWhitelist.jsx';
-import PlatformTestimonials from './pages/PlatformTestimonials.jsx';
-import PlatformLogin from './pages/PlatformLogin.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
+import RouteLoadingFallback from './components/RouteLoadingFallback.jsx';
+
+/* Dimuat lazy (React.lazy + Suspense di bawah), BUKAN import biasa di atas --
+   masing-masing hanya dibuka segelintir orang (admin platform saja, atau
+   sekali-sekali untuk cetak/laporan), jadi tidak wajar dipikul SETIAP
+   pengunjung lewat bundle utama. Lihat catatan bundle-size hasil audit
+   codebase -- ini bukan perbaikan bug, murni supaya beban unduhan awal
+   (termasuk untuk pengunjung anonim landing page) tidak ikut menanggung
+   kode yang mereka sendiri tidak pernah pakai. */
+const PricingPage = lazy(() => import('./pages/PricingPage.jsx'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage.jsx'));
+const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage.jsx'));
+const LineChart9Demo = lazy(() => import('./components/ui/sc-line-charts-9-demo.tsx'));
+const QRPrintPage = lazy(() => import('./pages/QRPrintPage.jsx'));
+const BatchQrPrintPage = lazy(() => import('./pages/BatchQrPrintPage.jsx'));
+const BastPrintPage = lazy(() => import('./pages/BastPrintPage.jsx'));
+const ConsumableQRPrintPage = lazy(() => import('./pages/ConsumableQRPrintPage.jsx'));
+const InvoicePrintPage = lazy(() => import('./pages/InvoicePrintPage.jsx'));
+const DepreciationReportPage = lazy(() => import('./pages/DepreciationReportPage.jsx'));
+const PlatformLogin = lazy(() => import('./pages/PlatformLogin.jsx'));
+const PlatformDashboard = lazy(() => import('./pages/PlatformDashboard.jsx'));
+const PlatformTenants = lazy(() => import('./pages/PlatformTenants.jsx'));
+const PlatformAdmins = lazy(() => import('./pages/PlatformAdmins.jsx'));
+const PlatformRevenue = lazy(() => import('./pages/PlatformRevenue.jsx'));
+const PlatformPlans = lazy(() => import('./pages/PlatformPlans.jsx'));
+const PlatformActivity = lazy(() => import('./pages/PlatformActivity.jsx'));
+const PlatformAccount = lazy(() => import('./pages/PlatformAccount.jsx'));
+const PlatformUsers = lazy(() => import('./pages/PlatformUsers.jsx'));
+const PlatformAuditLog = lazy(() => import('./pages/PlatformAuditLog.jsx'));
+const PlatformIpWhitelist = lazy(() => import('./pages/PlatformIpWhitelist.jsx'));
+const PlatformTestimonials = lazy(() => import('./pages/PlatformTestimonials.jsx'));
 
 /**
  * Setiap rute menyebutkan modul dan aksi minimal yang dibutuhkannya. Nilai
@@ -90,6 +99,7 @@ function NotFoundRedirect() {
 
 export default function App() {
   return (
+    <Suspense fallback={<RouteLoadingFallback />}>
     <Routes>
       {/* Publik — tidak butuh login, ini yang diakses saat client scan QR */}
       <Route path="/scan/:code" element={<PublicScanPage />} />
@@ -200,5 +210,6 @@ export default function App() {
       <Route path="/" element={<HomeRoute />} />
       <Route path="*" element={<NotFoundRedirect />} />
     </Routes>
+    </Suspense>
   );
 }
