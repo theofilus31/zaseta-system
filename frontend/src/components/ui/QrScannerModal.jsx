@@ -60,7 +60,18 @@ export default function QrScannerModal({ onClose, onDetected }) {
         // dari jarak wajar, tanpa memenuhi seluruh bingkai kamera.
         { fps: 10, qrbox: { width: 240, height: 240 } },
         (decodedText) => {
-          if (detectedRef.current) return; // cegah callback dobel sebelum stop() selesai
+          /* `cancelled` WAJIB dicek di sini, bukan cuma di .then()/.catch() --
+             kalau modal ditutup SELAGI start() masih menegosiasikan kamera
+             (izin belum diputuskan), teardown() SENGAJA ditunda sampai
+             start() settle (lihat komentar di .then() bawah) supaya
+             instance.stop() tidak dipanggil sebelum benar-benar berjalan.
+             Tapi itu berarti ADA JEDA singkat di mana kamera sudah aktif dan
+             mulai memindai frame padahal pengguna sudah menutup modalnya --
+             tanpa pengecekan ini, kode yang kebetulan terpindai di jeda itu
+             akan tetap diproses (onDetected -> submitValue -> POST ke
+             /opnames/:id/scan) walau modalnya sudah tidak terlihat sama
+             sekali, menandai aset yang salah tanpa sepengetahuan siapa pun. */
+          if (cancelled || detectedRef.current) return;
           detectedRef.current = true;
           onDetected(decodedText);
         },

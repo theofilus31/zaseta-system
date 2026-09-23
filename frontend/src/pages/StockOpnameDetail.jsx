@@ -315,6 +315,15 @@ function ScanBox({ opnameId, onDone }) {
             type="button"
             variant="secondary"
             size="icon"
+            /* size="icon" bawaan Button (h-9, 36px) lebih pendek dari tinggi
+               sungguhan .field/tombol "Tandai" di sebelahnya (bergantung
+               padding + tinggi baris teks, bukan angka tetap) -- !h-auto
+               melepas tinggi tetap itu supaya self-stretch di bawah bisa
+               mengikuti tinggi saudara tertingginya lewat align-items:
+               stretch bawaan flex (default div.flex di atas), tetap sinkron
+               kalau padding .field berubah nanti, bukan angka px yang
+               gampang basi. */
+            className="!h-auto w-9 self-stretch shrink-0"
             onClick={() => setShowScanner(true)}
             title="Pindai lewat kamera"
             aria-label="Pindai lewat kamera"
