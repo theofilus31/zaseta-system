@@ -216,6 +216,18 @@ export function NavBar() {
 
 /** Mockup dasbor aset di sisi kanan hero, lengkap dengan 3 chip melayang. */
 function DashboardMockup() {
+  /* Chip "X perusahaan bergabung" — SATU-SATUNYA angka nyata di antara
+     chip-chip mockup ini (sisanya, termasuk seisi "Dasbor Aset" di bawah,
+     memang data ilustrasi tetap). Diam-diam disembunyikan kalau gagal
+     dimuat (mis. API sedang turun) daripada menampilkan 0 yang menyesatkan
+     atau merusak tampilan hero dengan galat. */
+  const [tenantCount, setTenantCount] = useState(null);
+  useEffect(() => {
+    axiosClient.get('/public/tenant-count')
+      .then((res) => setTenantCount(res.data.count))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="relative mx-auto max-w-md lg:max-w-none">
       <div className="rounded-[20px] border border-ink-200/80 bg-white p-5 shadow-overlay">
@@ -298,22 +310,20 @@ function DashboardMockup() {
         3 pengingat aktif
       </div>
 
-      {/* chip 3 — tim online, sengaja dibuat paling menonjol (badge Live + glow) */}
-      <div className="absolute -top-9 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-brand-500/40 bg-brand-50 px-3 py-2 shadow-[0_14px_30px_-12px_rgba(35,125,63,.35),0_0_0_1px_rgba(47,156,79,.08)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-3.5 sm:py-2.5">
-        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-brand-600 text-white sm:h-[30px] sm:w-[30px]">
-          <i className="fas fa-user-group text-xs" aria-hidden="true" />
-          <span className="absolute -top-[3px] -right-[3px] h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500 motion-safe:animate-live-pulse sm:h-[11px] sm:w-[11px]" aria-hidden="true" />
-        </span>
-        <span className="flex flex-col items-start gap-[3px]">
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand-500 px-[7px] py-[2px] text-[8px] font-black uppercase leading-[1.4] tracking-[.09em] text-white sm:text-[9px]">
-            <span className="h-[5px] w-[5px] rounded-full bg-white motion-safe:animate-badge-pulse" aria-hidden="true" />
-            Live
+      {/* chip 3 — bukti sosial (jumlah perusahaan terdaftar), sengaja dibuat
+          paling menonjol (glow) -- SATU-SATUNYA chip berisi angka nyata,
+          lihat fetch tenantCount di atas. Disembunyikan sampai angkanya
+          datang, supaya tidak sempat menampilkan angka kosong/salah. */}
+      {tenantCount !== null && (
+        <div className="absolute -top-9 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-brand-500/40 bg-brand-50 px-3 py-2 shadow-[0_14px_30px_-12px_rgba(35,125,63,.35),0_0_0_1px_rgba(47,156,79,.08)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-3.5 sm:py-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-brand-600 text-white sm:h-[30px] sm:w-[30px]">
+            <i className="fas fa-building text-xs" aria-hidden="true" />
           </span>
           <span className="text-[11px] font-extrabold text-ink-800 sm:text-[13px]">
-            <b className="font-black text-brand-600">4</b> tim online
+            <b className="font-black text-brand-600">{tenantCount}</b> perusahaan bergabung
           </span>
-        </span>
-      </div>
+        </div>
+      )}
 
       <HeroLockCluster />
     </div>

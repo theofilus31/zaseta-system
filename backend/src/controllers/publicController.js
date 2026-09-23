@@ -108,6 +108,20 @@ const scanConsumable = asyncHandler(async (req, res) => {
   });
 });
 
+// GET /api/public/tenant-count — dipakai landing page untuk chip "X
+// perusahaan bergabung" (bukti sosial), TANPA AUTH. Hanya mengembalikan satu
+// angka agregat, bukan daftar/nama tenant, jadi tidak membocorkan apa pun
+// yang sensitif -- sama seperti alasan endpoint publik lain di berkas ini
+// dianggap aman. Hanya menghitung tenant 'active'/'trial' (sama seperti
+// resolvePublicTenantId) supaya tenant yang di-suspend tidak ikut menaikkan
+// angka "kepercayaan" ini.
+const getPublicTenantCount = asyncHandler(async (req, res) => {
+  const [[{ count }]] = await pool.query(
+    `SELECT COUNT(*) AS count FROM tenants WHERE status IN ('active', 'trial')`
+  );
+  res.json({ count: Number(count) });
+});
+
 // GET /api/public/categories — dropdown "Kode Barang/Aset" di form permintaan publik.
 // Hanya id + nama, TANPA AUTH: tidak ada apa pun di sini yang rahasia.
 const listPublicCategories = asyncHandler(async (req, res) => {
@@ -258,4 +272,4 @@ const resolveUsernameTenant = asyncHandler(async (req, res) => {
   res.json({ slug: rows.length === 1 ? rows[0].slug : null });
 });
 
-module.exports = { scanAsset, scanConsumable, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant };
+module.exports = { scanAsset, scanConsumable, getPublicTenantCount, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant };

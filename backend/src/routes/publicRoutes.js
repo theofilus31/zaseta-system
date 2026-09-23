@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { scanAsset, scanConsumable, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant } = require('../controllers/publicController');
+const { scanAsset, scanConsumable, getPublicTenantCount, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant } = require('../controllers/publicController');
 const { getPublicBranding, getLogo } = require('../controllers/settingsController');
 const { publicReadLimiter, publicWriteLimiter, enumerationLimiter } = require('../middleware/publicLimiter');
 
@@ -15,6 +15,10 @@ router.get('/scan-consumable/:code', publicReadLimiter, scanConsumable);
    karyawan tanpa akun aplikasi, supaya mereka bisa mengajukan kebutuhan aset
    sendiri tanpa perlu dibuatkan manual. */
 router.get('/categories', publicReadLimiter, listPublicCategories);
+
+/* Chip "X perusahaan bergabung" di landing page — lihat catatan di
+   publicController.getPublicTenantCount. */
+router.get('/tenant-count', publicReadLimiter, getPublicTenantCount);
 router.post('/requests', publicWriteLimiter, createPublicRequest);
 
 /* Merek dibutuhkan SEBELUM ada sesi: halaman Masuk dan halaman Pindai QR
