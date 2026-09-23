@@ -229,28 +229,70 @@ function DashboardMockup() {
   }, []);
 
   return (
-    <div className="relative mx-auto max-w-md lg:max-w-none">
+    /* w-full WAJIB berdampingan dengan mx-auto max-w-md di sini. Ini grid
+       item LANGSUNG di grid-cols-1 milik Hero (lihat `<DashboardMockup />`
+       di JSX Hero). Tanpa w-full: margin `auto` di sumbu inline (mx-auto)
+       membuat spec Grid TIDAK men-stretch item ini ke lebar track sama
+       sekali -- ukurannya jatuh ke lebar preferensinya sendiri (max-content,
+       "serapat mungkin tanpa membungkus apa pun", dibatasi max-w-md), BUKAN
+       ke lebar track yang sungguhan tersedia. Diverifikasi lewat
+       getComputedStyle: track Hero di viewport ~356px cuma 316px, tapi
+       kartu ini tetap ngotot 378px lebar -- min-w-0 di sini SENDIRIAN (atau
+       di turunan mana pun: judul kartu, kotak statistik) TIDAK PERNAH cukup
+       selama akar masalahnya "tidak pernah diberi tahu berapa lebar yang
+       sungguhan tersedia" seperti ini. overflow-hidden section cuma
+       MEMOTONG sisa 62px itu diam-diam (bukan menyusutkan) -- persis
+       laporan pengguna dari HP Android sungguhan: chip "3 pengingat aktif"
+       di kanan-bawah kartu terpotong habis tanpa cara men-scroll untuk
+       melihatnya, karena separuh kartu itu sendiri sudah di luar layar.
+       Dengan w-full, kartu mengisi 100% track (max 448px lewat max-w-md),
+       dan turunan yang sudah dibekali truncate/min-w-0 (judul, kotak
+       statistik) BARU sungguhan menerima lebar sempit yang harus disikapi. */
+    <div className="relative mx-auto w-full min-w-0 max-w-md lg:max-w-none">
       <div className="rounded-[20px] border border-ink-200/80 bg-white p-5 shadow-overlay">
         <div className="mb-4 flex items-center justify-between gap-2.5">
-          <span className="truncate text-xs font-bold text-ink-700">Dasbor Aset — PT Contoh Sejahtera</span>
+          {/* min-w-0 WAJIB berdampingan dengan `truncate` di sini -- flex item
+              BAWAAN tidak pernah menyusut di bawah lebar teks utuhnya sendiri
+              (min-width: auto bawaan flex, sama seperti grid), jadi tanpa ini
+              "truncate" (overflow:hidden + white-space:nowrap) TIDAK PERNAH
+              sempat memotong apa pun -- browser sudah lebih dulu memesan
+              ruang penuh utk "Dasbor Aset — PT Contoh Sejahtera" apa adanya,
+              ikut memaksa lebar kartu & seluruh grid Hero di atasnya melebar.
+              INI biang utama laporan kartu terpotong di HP -- min-w-0 di
+              DashboardMockup root sendirian TIDAK CUKUP karena batasannya
+              berasal dari sini (turunan), bukan dari root-nya. */}
+          <span className="min-w-0 truncate text-xs font-bold text-ink-700">Dasbor Aset — PT Contoh Sejahtera</span>
           <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">
             <i className="fas fa-check text-[9px]" aria-hidden="true" />
             Tersinkron
           </span>
         </div>
 
+        {/* min-w-0 di TIAP kotak -- grid item BAWAAN tidak pernah menyusut di
+            bawah lebar konten satu-barisnya sendiri (min-width: auto bawaan
+            grid, sama seperti kasus `truncate` di judul kartu di atas).
+            "Perlu Ditindak" (kotak terpanjang) nyaris PAS mengisi lebar
+            kotak yang dihasilkan tanpa min-w-0 -- browser memilih TIDAK
+            PERNAH membungkusnya jadi dua baris walau ruang sungguhan lebih
+            sempit, malah memaksa lebar kartu & Hero di atasnya ikut melebar.
+            Dengan min-w-0, teksnya bebas membungkus ("Perlu"/"Ditindak") saat
+            kotaknya harus menyempit -- tidak masalah, cuma tiga kata pendek,
+            bukan `truncate` yang butuh utuh satu baris. Diverifikasi lewat
+            getBoundingClientRect di viewport 356-430px -- INI biang TERAKHIR
+            yang tersisa dari laporan kartu/chip terpotong di HP, setelah
+            perbaikan `truncate` judul kartu ternyata belum cukup sendirian. */}
         <div className="mb-4 grid grid-cols-3 gap-2.5">
-          <div className="relative overflow-hidden rounded-2xl border border-ink-200 p-3">
+          <div className="relative min-w-0 overflow-hidden rounded-2xl border border-ink-200 p-3">
             <span className="absolute inset-x-0 top-0 h-0.5 bg-brand-500 opacity-55" aria-hidden="true" />
             <p className="text-[10px] font-bold text-ink-500">Total Aset</p>
             <p className="mt-1 text-[19px] font-black text-ink-900">482</p>
           </div>
-          <div className="relative overflow-hidden rounded-2xl border border-ink-200 p-3">
+          <div className="relative min-w-0 overflow-hidden rounded-2xl border border-ink-200 p-3">
             <span className="absolute inset-x-0 top-0 h-0.5 bg-info-500 opacity-55" aria-hidden="true" />
             <p className="text-[10px] font-bold text-ink-500">Dipakai</p>
             <p className="mt-1 text-[19px] font-black text-ink-900">311</p>
           </div>
-          <div className="relative overflow-hidden rounded-2xl border border-ink-200 p-3">
+          <div className="relative min-w-0 overflow-hidden rounded-2xl border border-ink-200 p-3">
             <span className="absolute inset-x-0 top-0 h-0.5 bg-warning-500 opacity-55" aria-hidden="true" />
             <p className="text-[10px] font-bold text-ink-500">Perlu Ditindak</p>
             <p className="mt-1 text-[19px] font-black text-ink-900">14</p>
@@ -294,16 +336,28 @@ function DashboardMockup() {
         </div>
       </div>
 
-      {/* chip 1 — pemindaian QR */}
-      <div className="absolute -top-8 -left-2 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-ink-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-800 shadow-card-hover sm:-top-11 sm:-left-8 sm:px-3.5 sm:py-2.5 sm:text-xs">
+      {/* chip 1 — pemindaian QR.
+          Mobile pakai `left-0` (BUKAN -left-2 seperti sebelumnya) -- laporan
+          pengguna dari HP Android sungguhan (bukan simulasi lebar viewport di
+          desktop) menunjukkan chip di sisi kanan (chip 2/3 di bawah, pola
+          -right-2 yang sama) terpotong tepi layar. -left-2/-right-2 menaruh
+          tepi chip 8px LEWAT tepi wrapper mockup (yang di mobile SUDAH pas
+          mengisi lebar kolom, viewport - 32px dari px-4 section) -- jarak
+          amannya cuma 8px murni dari tepi viewport, gampang habis oleh
+          pembulatan subpixel di rendering dunia nyata. left-0/right-0 pas di
+          tepi wrapper, memberi jarak aman penuh 16px (padding section itu
+          sendiri) -- dua kali lipat, dan tidak lagi "menjorok keluar" sama
+          sekali. Desktop (sm: ke atas) TIDAK diubah -- ruangnya jauh lebih
+          lega di sana, laporan kepotong ini murni soal mobile. */}
+      <div className="absolute -top-8 left-0 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-ink-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-800 shadow-card-hover sm:-top-11 sm:-left-8 sm:px-3.5 sm:py-2.5 sm:text-xs">
         <span className="flex h-6 w-6 items-center justify-center rounded-[9px] bg-brand-500 text-white sm:h-7 sm:w-7">
           <i className="fas fa-check text-[11px]" aria-hidden="true" />
         </span>
         Kode QR terpindai
       </div>
 
-      {/* chip 2 — pengingat */}
-      <div className="absolute -bottom-8 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-ink-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-800 shadow-card-hover sm:-bottom-11 sm:-right-8 sm:px-3.5 sm:py-2.5 sm:text-xs">
+      {/* chip 2 — pengingat (lihat catatan left-0/right-0 di chip 1 di atas) */}
+      <div className="absolute -bottom-8 right-0 flex items-center gap-2 whitespace-nowrap rounded-2xl border border-ink-200 bg-white px-3 py-2 text-[11px] font-bold text-ink-800 shadow-card-hover sm:-bottom-11 sm:-right-8 sm:px-3.5 sm:py-2.5 sm:text-xs">
         <span className="flex h-6 w-6 items-center justify-center rounded-[9px] bg-warning-500 text-white sm:h-7 sm:w-7">
           <i className="fas fa-bell text-[11px]" aria-hidden="true" />
         </span>
@@ -313,9 +367,22 @@ function DashboardMockup() {
       {/* chip 3 — bukti sosial (jumlah perusahaan terdaftar), sengaja dibuat
           paling menonjol (glow) -- SATU-SATUNYA chip berisi angka nyata,
           lihat fetch tenantCount di atas. Disembunyikan sampai angkanya
-          datang, supaya tidak sempat menampilkan angka kosong/salah. */}
+          datang, supaya tidak sempat menampilkan angka kosong/salah.
+
+          `hidden sm:flex` -- DISEMBUNYIKAN di layar <640px, terpisah dari
+          alasan left-0/right-0 di chip 1. Setelah kartu mockup diperbaiki
+          supaya sungguhan menyusut mengikuti lebar viewport (lihat catatan
+          w-full di DashboardMockup root), chip 1 ("Kode QR terpindai", kiri)
+          dan chip 3 ini (kanan) SAMA-SAMA berbagi baris atas yang sama --
+          lebar gabungan keduanya (~354px) MELEBIHI lebar kartu di viewport
+          sekitar 340-400px, membuat keduanya bertabrakan di tengah.
+          Diverifikasi lewat getBoundingClientRect di viewport 375px: chip 1
+          berakhir di x=170, chip 3 mulai di x=147 -- tumpang tindih 23px.
+          Chip 3 murni bukti sosial tambahan (chip 1 & 2 sudah mewakili fitur
+          inti produk), jadi disembunyikan di mobile daripada dipaksa
+          berbagi ruang yang memang tidak muat untuk keduanya sekaligus. */}
       {tenantCount !== null && (
-        <div className="absolute -top-9 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 px-3 py-2 shadow-[0_14px_28px_-10px_rgba(35,125,63,.55),0_0_0_1px_rgba(47,156,79,.2)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-3.5 sm:py-2.5">
+        <div className="absolute -top-9 right-0 hidden items-center gap-2 whitespace-nowrap rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 px-3 py-2 shadow-[0_14px_28px_-10px_rgba(35,125,63,.55),0_0_0_1px_rgba(47,156,79,.2)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:flex sm:px-3.5 sm:py-2.5">
           <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white sm:h-7 sm:w-7">
             <i className="fas fa-building text-[10px]" aria-hidden="true" />
             {/* Titik "berdenyut" ala notification badge -- dua lapis (cincin
