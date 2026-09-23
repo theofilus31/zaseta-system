@@ -164,7 +164,14 @@ export default function BillingPage() {
       .finally(() => { if (withSkeleton) setLoading(false); });
   }
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // `load()` mengembalikan Promise (lihat definisinya di atas) -- dibungkus
+  // arrow function di sini SUPAYA useEffect tidak menerima Promise itu
+  // sebagai nilai baliknya sendiri. React memperlakukan APA PUN yang
+  // dikembalikan efek sebagai fungsi cleanup; sebuah Promise yang dianggap
+  // begitu meledak "destroy is not a function" begitu efeknya dibersihkan
+  // (mis. StrictMode yang sengaja mount-cleanup-mount ulang tiap efek di
+  // mode dev untuk mendeteksi bug seperti ini).
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Pembayaran Pakasir selesai di TAB/HALAMAN LAIN (redirect penuh ke
      app.pakasir.com, bukan popup, lewat `window.location.href` di

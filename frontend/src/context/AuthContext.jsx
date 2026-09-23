@@ -16,28 +16,35 @@ export function AuthProvider({ children }) {
      login/daftar/keluar, tanpa perlu memuat ulang halaman. */
   const { refresh: refreshBranding } = useBranding();
 
-  /* Izin disegarkan dari server saat aplikasi dibuka.
-     Dua alasan: (1) sesi lama yang tersimpan sebelum fitur izin ada belum
-     punya field `permissions` sama sekali, dan (2) administrator bisa
-     mengubah hak akses seseorang yang sedang aktif — perubahan itu harus
-     terasa tanpa menunggu yang bersangkutan login ulang. */
+  /* Menyegarkan sesi dari /auth/me — dipakai dua kali: (1) saat aplikasi
+     baru dibuka (efek di bawah, sesi dari localStorage), dan (2) dipanggil
+     LANGSUNG oleh login()/googleLogin()/verifySignupEmail()/googleSignup()
+     di bawah SEBELUM mereka resolve, supaya field yang tidak ikut dikirim
+     respons login (mis. `plan`/`planName` tenant -- lihat Sidebar.jsx &
+     ProtectedRoute.jsx yang membacanya untuk kunci fitur paket Free) sudah
+     ada begitu halaman tujuan (mis. /dashboard) dirender, bukan menunggu
+     sesi berikutnya. Tanpa ini, field itu baru muncul setelah pengguna
+     me-refresh manual -- sesi login yang baru saja dibuat tidak pernah
+     mendapatkannya sendiri selama SPA-nya belum dimuat ulang. */
+  const refreshMe = useCallback(async () => {
+    try {
+      const res = await axiosClient.get('/auth/me');
+      const fresh = res.data.user;
+      setUser((prev) => {
+        const merged = { ...prev, ...fresh };
+        localStorage.setItem('user', JSON.stringify(merged));
+        return merged;
+      });
+    } catch {
+      /* Token kedaluwarsa/dicabut sudah ditangani interceptor axios
+         (diarahkan ke halaman masuk). Tidak ada yang perlu dilakukan di sini. */
+    }
+  }, []);
+
   useEffect(() => {
     if (!localStorage.getItem('token')) return;
-
-    axiosClient.get('/auth/me')
-      .then((res) => {
-        const fresh = res.data.user;
-        setUser((prev) => {
-          const merged = { ...prev, ...fresh };
-          localStorage.setItem('user', JSON.stringify(merged));
-          return merged;
-        });
-      })
-      .catch(() => {
-        /* Token kedaluwarsa/dicabut sudah ditangani interceptor axios
-           (diarahkan ke halaman masuk). Tidak ada yang perlu dilakukan di sini. */
-      });
-  }, []);
+    refreshMe();
+  }, [refreshMe]);
 
   // `slug` opsional (Fase 5 Tahap 2 SaaS) — dikirim TenantLogin.jsx (halaman
   // masuk khusus satu tenant, /rms/login) supaya pencarian akunnya langsung
@@ -49,6 +56,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     refreshBranding();
+    await refreshMe();
     return data.user;
   }
 
@@ -76,6 +84,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     refreshBranding();
+    await refreshMe();
     return { user: data.user, tenantSlug: data.tenantSlug };
   }
 
@@ -98,6 +107,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     refreshBranding();
+    await refreshMe();
     return data.user;
   }
 
@@ -113,6 +123,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     refreshBranding();
+    await refreshMe();
     return data; // { token, tenantSlug, user }
   }
 
