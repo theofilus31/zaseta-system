@@ -915,6 +915,59 @@ const removeIpWhitelist = asyncHandler(async (req, res) => {
   res.json({ id: Number(id), message: `Alamat IP ${row.ipAddress} dihapus dari daftar putih.` });
 });
 
+/**
+ * GET /api/platform/testimonials?status=pending|approved|rejected|all
+ * Tinjauan testimoni tenant (lihat testimonialController.submitTestimonial)
+ * sebelum tampil publik di landing page. `status` bawaan 'pending' --
+ * itulah yang benar-benar butuh ditindaklanjuti.
+ */
+const listTestimonials = asyncHandler(async (req, res) => {
+  const statusFilter = req.query.status === 'all' ? null : (req.query.status || 'pending');
+
+  const [rows] = await pool.query(
+    `SELECT t.id, t.author_name AS "authorName", t.author_role AS "authorRole", t.company_name AS "companyName",
+            t.rating, t.message, t.status, t.created_at AS "createdAt", t.reviewed_at AS "reviewedAt",
+            tn.id AS "tenantId"
+     FROM testimonials t
+     JOIN tenants tn ON tn.id = t.tenant_id
+     ${statusFilter ? 'WHERE t.status = :statusFilter' : ''}
+     ORDER BY t.created_at DESC`,
+    statusFilter ? { statusFilter } : {}
+  );
+
+  res.json({ testimonials: rows });
+});
+
+/**
+ * POST /api/platform/testimonials/:id/approve
+ * POST /api/platform/testimonials/:id/reject
+ * Disetujui -> langsung muncul di GET /public/testimonials (diurutkan dari
+ * reviewed_at, lihat testimonialController.listPublicTestimonials).
+ */
+function resolveTestimonial(approve) {
+  return asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const [[testimonial]] = await pool.query(`SELECT id, status, tenant_id AS "tenantId" FROM testimonials WHERE id = :id`, { id });
+    if (!testimonial) return res.status(404).json({ message: 'Testimoni tidak ditemukan.' });
+    if (testimonial.status !== 'pending') {
+      return res.status(409).json({ message: 'Testimoni ini sudah ditinjau sebelumnya.' });
+    }
+
+    const status = approve ? 'approved' : 'rejected';
+    await pool.query(
+      `UPDATE testimonials SET status = :status, reviewed_by = :reviewedBy, reviewed_at = NOW() WHERE id = :id`,
+      { status, reviewedBy: req.user.id, id }
+    );
+
+    await logAudit({
+      userId: req.user.id, tenantId: testimonial.tenantId, action: 'update', entityType: 'testimonial', entityId: Number(id),
+      newValues: { status },
+    });
+
+    res.json({ id: Number(id), status });
+  });
+}
+
 module.exports = {
   getStats,
   getRevenue,
@@ -937,5 +990,8 @@ module.exports = {
   listAllAuditLogs,
   listIpWhitelist,
   addIpWhitelist,
+  listTestimonials,
+  approveTestimonial: resolveTestimonial(true),
+  rejectTestimonial: resolveTestimonial(false),
   removeIpWhitelist,
 };

@@ -50,6 +50,7 @@ import PlatformAccount from './pages/PlatformAccount.jsx';
 import PlatformUsers from './pages/PlatformUsers.jsx';
 import PlatformAuditLog from './pages/PlatformAuditLog.jsx';
 import PlatformIpWhitelist from './pages/PlatformIpWhitelist.jsx';
+import PlatformTestimonials from './pages/PlatformTestimonials.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 
@@ -174,6 +175,7 @@ export default function App() {
       <Route path="/platform/tenants" element={<ProtectedRoute platform><PlatformTenants /></ProtectedRoute>} />
       <Route path="/platform/admins" element={<ProtectedRoute platform><PlatformAdmins /></ProtectedRoute>} />
       <Route path="/platform/ip-whitelist" element={<ProtectedRoute platform><PlatformIpWhitelist /></ProtectedRoute>} />
+      <Route path="/platform/testimonials" element={<ProtectedRoute platform><PlatformTestimonials /></ProtectedRoute>} />
       <Route path="/platform/account" element={<ProtectedRoute platform><PlatformAccount /></ProtectedRoute>} />
       <Route path="/platform/users" element={<ProtectedRoute platform><PlatformUsers /></ProtectedRoute>} />
       <Route path="/platform/audit-log" element={<ProtectedRoute platform><PlatformAuditLog /></ProtectedRoute>} />

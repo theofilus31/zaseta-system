@@ -42,6 +42,7 @@ async function authenticate(req, res, next) {
        tanpa menunggu semua tokennya kedaluwarsa satu-satu. */
     const [rows] = await pool.query(
       `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin,
+              u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus",
               r.name AS role, t.status AS tenant_status, t.plan
        FROM users u
        JOIN roles r ON r.id = u.role_id

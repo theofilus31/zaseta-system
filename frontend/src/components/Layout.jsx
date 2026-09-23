@@ -5,6 +5,7 @@ import TabBar from './layout/TabBar.jsx';
 import BottomTabBar from './layout/BottomTabBar.jsx';
 import ErrorToast from './layout/ErrorToast.jsx';
 import ZecodeWidget from './zecode/ZecodeWidget.jsx';
+import TestimonialPrompt from './TestimonialPrompt.jsx';
 import { cn } from '../utils/cn.js';
 import { SidebarProvider, useSidebar } from './ui/Sidebar.jsx';
 import { TabsProvider, useTabs } from '../context/TabsContext.jsx';
@@ -113,6 +114,10 @@ function LayoutShell({ width }) {
       {/* Zecode — chatbot panduan statis; tombol mengambang di pojok kanan
           bawah, tersedia di semua halaman berkerangka untuk semua pengguna. */}
       <ZecodeWidget />
+
+      {/* Popup permintaan testimoni -- muncul sendiri tiap kelipatan 3 login,
+          lihat catatan lengkap di TestimonialPrompt.jsx. */}
+      <TestimonialPrompt />
     </div>
   );
 }

@@ -97,6 +97,9 @@ CREATE TABLE users (
                                           -- platformController.createPlatformAdmin) & seed.sql langsung
                                           -- diisi NOW() saat dibuat, tidak pernah perlu verifikasi sendiri.
     last_login_at       TIMESTAMP NULL,
+    login_count         INT NOT NULL DEFAULT 0,  -- lihat migration_add_testimonials.sql
+    testimonial_status  VARCHAR(20) NOT NULL DEFAULT 'none'
+                            CHECK (testimonial_status IN ('none', 'skipped', 'submitted')),
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at          TIMESTAMP NULL,
@@ -910,3 +913,22 @@ INSERT INTO plans (id, name, tagline, price, price_yearly, max_assets, max_users
 ('enterprise', 'Enterprise', 'Organisasi besar — harga mulai dari, siap disesuaikan kebutuhan.', 599000, 5990000, 20000, 50, NULL,
     '["20.000+ aset, 50+ pengguna","Peran & izin akses lanjutan","Alur persetujuan lanjutan","Log audit lanjutan","Penyusutan aset & laporan kustom","Multi-cabang/lokasi tanpa batas","Akses API & dukungan integrasi","Dukungan prioritas/khusus"]'::jsonb,
     FALSE, FALSE, TRUE, 'Butuh kapasitas lebih besar atau kontrak/SLA khusus?', 3, TRUE);
+
+-- Testimoni pelanggan -- lihat migration_add_testimonials.sql
+CREATE TABLE testimonials (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tenant_id       BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    author_name     VARCHAR(150) NOT NULL,
+    author_role     VARCHAR(150) NULL,
+    company_name    VARCHAR(150) NOT NULL,
+    rating          SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    message         TEXT NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by     BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at     TIMESTAMP NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_testimonials_status ON testimonials(status);
+CREATE INDEX idx_testimonials_tenant ON testimonials(tenant_id);

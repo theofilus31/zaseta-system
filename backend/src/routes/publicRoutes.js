@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { scanAsset, scanConsumable, getPublicTenantCount, listPublicCategories, createPublicRequest, submitContact, checkSlugAvailability, resolveUsernameTenant } = require('../controllers/publicController');
+const { listPublicTestimonials } = require('../controllers/testimonialController');
 const { getPublicBranding, getLogo } = require('../controllers/settingsController');
 const { publicReadLimiter, publicWriteLimiter, enumerationLimiter } = require('../middleware/publicLimiter');
 
@@ -19,6 +20,10 @@ router.get('/categories', publicReadLimiter, listPublicCategories);
 /* Chip "X perusahaan bergabung" di landing page — lihat catatan di
    publicController.getPublicTenantCount. */
 router.get('/tenant-count', publicReadLimiter, getPublicTenantCount);
+
+/* Bagian testimoni di landing page — hanya testimoni berstatus 'approved'
+   (lihat testimonialController.listPublicTestimonials). */
+router.get('/testimonials', publicReadLimiter, listPublicTestimonials);
 router.post('/requests', publicWriteLimiter, createPublicRequest);
 
 /* Merek dibutuhkan SEBELUM ada sesi: halaman Masuk dan halaman Pindai QR

@@ -628,6 +628,68 @@ function Pricing() {
   );
 }
 
+/**
+ * Testimoni tenant sungguhan — diisi lewat popup di dalam aplikasi
+ * (components/TestimonialPrompt.jsx, ditawarkan tiap kelipatan 3 login) dan
+ * ditinjau admin platform sebelum tampil di sini (GET /public/testimonials
+ * hanya mengembalikan yang berstatus 'approved'). Section ini SENGAJA
+ * menyembunyikan dirinya sendiri kalau belum ada testimoni yang disetujui,
+ * daripada menampilkan keadaan kosong di halaman pemasaran.
+ */
+function Testimonials() {
+  const [testimonials, setTestimonials] = useState(null);
+  useEffect(() => {
+    axiosClient.get('/public/testimonials')
+      .then((res) => setTestimonials(res.data))
+      .catch(() => setTestimonials([]));
+  }, []);
+
+  if (!testimonials || testimonials.length === 0) return null;
+
+  return (
+    <section className="bg-ink-50 py-20">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-brand-600">Testimoni</p>
+          <h2 className="text-2xl font-black tracking-tight text-ink-900 sm:text-[32px]">
+            Kata mereka yang sudah memakai Zaseta
+          </h2>
+        </div>
+
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {testimonials.map((t, i) => (
+            <Reveal key={t.id} index={i}>
+              <div className="flex h-full flex-col rounded-2xl border border-ink-200/70 bg-white p-5 shadow-card">
+                <div className="flex items-center gap-0.5" aria-label={`${t.rating} dari 5 bintang`}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <i
+                      key={n}
+                      className={`fas fa-star text-xs ${n <= t.rating ? 'text-warning-400' : 'text-ink-200'}`}
+                      aria-hidden="true"
+                    />
+                  ))}
+                </div>
+                <p className="mt-3 flex-1 text-[13.5px] leading-relaxed text-ink-700">&ldquo;{t.message}&rdquo;</p>
+                <div className="mt-4 flex items-center gap-3 border-t border-ink-100 pt-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-black text-brand-700">
+                    {t.authorName.trim()[0]?.toUpperCase() || '?'}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-bold text-ink-900">{t.authorName}</p>
+                    <p className="truncate text-[11.5px] text-ink-400">
+                      {[t.authorRole, t.companyName].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CtaBanner() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
@@ -801,6 +863,7 @@ export default function LandingPage() {
       <Features />
       <HowItWorks />
       <Pricing />
+      <Testimonials />
       <CtaBanner />
       <Contact />
       <Footer />

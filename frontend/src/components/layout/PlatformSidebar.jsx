@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/platform/tenants', label: 'Tenant', icon: 'fa-building' },
       { to: '/platform/users', label: 'Pengguna', icon: 'fa-users' },
+      { to: '/platform/testimonials', label: 'Testimoni', icon: 'fa-star' },
     ],
   },
   {

@@ -49,7 +49,8 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const [candidates] = await pool.query(
-    `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.password_hash, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role
+    `SELECT u.id, u.tenant_id, u.username, u.name, u.email, u.password_hash, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role,
+            u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus"
      FROM users u JOIN roles r ON r.id = u.role_id
      WHERE (u.username = :identifier OR u.email = :identifier) AND u.deleted_at IS NULL AND u.status = 'active'
      ${tenantId ? 'AND u.tenant_id = :tenantId' : ''}`,
@@ -80,7 +81,16 @@ const login = asyncHandler(async (req, res) => {
 
   const token = signToken(user);
 
-  await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = :id`, { id: user.id });
+  /* login_count dipakai TestimonialPrompt.jsx (frontend) untuk menawarkan
+     popup testimoni tiap kelipatan 3 login -- lihat migration_add_testimonials.sql.
+     Dihitung di JS dari nilai yang SUDAH terbaca di query `candidates` di
+     atas (bukan lewat `RETURNING login_count` di sini) -- lapisan
+     kompatibilitas mysql2 di config/db.js cuma mengekspos SATU kolom
+     pertama RETURNING sebagai `insertId`, bukan seluruh baris, jadi
+     RETURNING banyak kolom sekaligus tidak bisa dibaca dari sini. */
+  const loginCount = (user.loginCount || 0) + 1;
+  const { testimonialStatus } = user;
+  await pool.query(`UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = :id`, { id: user.id });
   await logAudit({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, ipAddress: req.ip });
 
   /* Izin ikut dikirim saat login supaya menu & tombol langsung tampil sesuai
@@ -93,6 +103,7 @@ const login = asyncHandler(async (req, res) => {
     user: {
       id: user.id, tenantId: user.tenant_id, username: user.username, name: user.name,
       email: user.email, role: user.role, permissions, is_platform_admin: Boolean(user.is_platform_admin),
+      loginCount, testimonialStatus,
     },
   });
 });
@@ -622,7 +633,8 @@ const googleLogin = asyncHandler(async (req, res) => {
     tenantId = tenant.id;
   }
 
-  const selectCols = `u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role`;
+  const selectCols = `u.id, u.tenant_id, u.username, u.name, u.email, u.status, u.token_version, u.is_platform_admin, u.email_verified_at, r.name AS role,
+                      u.login_count AS "loginCount", u.testimonial_status AS "testimonialStatus"`;
 
   const [byGoogleId] = await pool.query(
     `SELECT ${selectCols} FROM users u JOIN roles r ON r.id = u.role_id
@@ -671,7 +683,11 @@ const googleLogin = asyncHandler(async (req, res) => {
   }
 
   const token = signToken(user);
-  await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = :id`, { id: user.id });
+  // Lihat catatan sama di login() soal kenapa loginCount dihitung di JS,
+  // bukan lewat RETURNING banyak kolom di UPDATE ini.
+  const loginCount = (user.loginCount || 0) + 1;
+  const { testimonialStatus } = user;
+  await pool.query(`UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = :id`, { id: user.id });
   await logAudit({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, ipAddress: req.ip });
   const permissions = await loadPermissions(user);
 
@@ -680,6 +696,7 @@ const googleLogin = asyncHandler(async (req, res) => {
     user: {
       id: user.id, tenantId: user.tenant_id, username: user.username, name: user.name,
       email: user.email, role: user.role, permissions, is_platform_admin: Boolean(user.is_platform_admin),
+      loginCount, testimonialStatus,
     },
   });
 });

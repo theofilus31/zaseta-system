@@ -35,4 +35,8 @@ router.get('/ip-whitelist', ctrl.listIpWhitelist);
 router.post('/ip-whitelist', ctrl.addIpWhitelist);
 router.delete('/ip-whitelist/:id', ctrl.removeIpWhitelist);
 
+router.get('/testimonials', ctrl.listTestimonials);
+router.post('/testimonials/:id/approve', ctrl.approveTestimonial);
+router.post('/testimonials/:id/reject', ctrl.rejectTestimonial);
+
 module.exports = router;
