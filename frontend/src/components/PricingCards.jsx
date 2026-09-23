@@ -7,6 +7,7 @@ import Button from './ui/Button.jsx';
 import { Skeleton } from './ui/Skeleton.jsx';
 import { Badge } from './ui/StatusBadge.jsx';
 import { SegmentedControl } from './ui/Button.jsx';
+import { rupiah } from '../utils/currency.js';
 
 /**
  * Grid kartu paket harga — dipakai LandingPage.jsx (section "Harga" langsung
@@ -40,7 +41,6 @@ const CYCLE_OPTIONS = [
   },
 ];
 
-const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 
 /* Dipakai HANYA di belakang kartu gelap (Enterprise Custom) — garis kisi
    samar dengan gradasi radial di tepinya, versi terang dari efek yang sama

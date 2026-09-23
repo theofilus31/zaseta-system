@@ -12,6 +12,7 @@ import { Badge } from '../components/ui/StatusBadge.jsx';
 import { Skeleton, SkeletonRows } from '../components/ui/Skeleton.jsx';
 import { TextField, TextareaField, FormError } from '../components/ui/Form.jsx';
 import { ConsumableFormModal } from './ConsumableList.jsx';
+import { rupiahOrNull as rupiah } from '../utils/currency.js';
 
 /**
  * ============================================================================
@@ -32,7 +33,6 @@ const TYPE_CONFIG = {
 
 const tanggal = (v) =>
   v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-const rupiah = (v) => (v === null || v === undefined ? null : `Rp ${Number(v).toLocaleString('id-ID')}`);
 
 export default function ConsumableDetail() {
   const { id } = useParams();

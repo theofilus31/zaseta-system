@@ -9,6 +9,7 @@ import Button from '../components/ui/Button.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
+import { rupiah } from '../utils/currency.js';
 
 /**
  * ============================================================================
@@ -27,7 +28,6 @@ import { Badge } from '../components/ui/StatusBadge.jsx';
  * ============================================================================
  */
 
-const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 const tanggalPanjang = (v) =>
   v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
 

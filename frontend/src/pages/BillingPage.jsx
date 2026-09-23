@@ -13,6 +13,7 @@ import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
 import { FormError } from '../components/ui/Form.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
+import { rupiah } from '../utils/currency.js';
 
 const CYCLE_OPTIONS = [
   { value: 'monthly', label: 'Bulanan' },
@@ -27,7 +28,6 @@ const CYCLE_OPTIONS = [
   },
 ];
 
-const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 const angka = (v) => Number(v).toLocaleString('id-ID');
 
 const INVOICE_STATUS_TONE = { pending: 'warning', paid: 'brand', failed: 'danger', refunded: 'neutral', canceled: 'neutral' };

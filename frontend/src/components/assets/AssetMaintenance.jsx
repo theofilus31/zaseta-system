@@ -10,6 +10,7 @@ import { Badge } from '../ui/StatusBadge.jsx';
 import { TextField, SearchableSelect, DateField, TextareaField, FormError } from '../ui/Form.jsx';
 import { Skeleton } from '../ui/Skeleton.jsx';
 import { todayLocal as today } from '../../utils/dateLocal.js';
+import { rupiahOrNull as rupiah } from '../../utils/currency.js';
 
 /**
  * ============================================================================
@@ -35,7 +36,6 @@ const STATUS_CONFIG = {
   dibatalkan: { label: 'Dibatalkan', tone: 'neutral', icon: 'fa-circle-xmark' },
 };
 
-const rupiah = (v) => (v === null || v === undefined ? null : `Rp ${Number(v).toLocaleString('id-ID')}`);
 const tanggal = (v) =>
   v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 

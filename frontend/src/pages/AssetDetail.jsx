@@ -15,9 +15,7 @@ import { CheckOutModal, CheckInModal } from '../components/assets/AssignmentModa
 import AssetAttachments from '../components/assets/AssetAttachments.jsx';
 import AssetReminders from '../components/assets/AssetReminders.jsx';
 import AssetMaintenance from '../components/assets/AssetMaintenance.jsx';
-
-const rupiah = (v) =>
-  v === null || v === undefined || v === '' ? null : `Rp ${Number(v).toLocaleString('id-ID')}`;
+import { rupiahOrNull as rupiah } from '../utils/currency.js';
 
 const tanggal = (v) =>
   v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;

@@ -7,6 +7,7 @@ import Card from '../components/ui/Card.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SearchableSelect } from '../components/ui/Form.jsx';
+import { timeAgo } from '../utils/timeAgo.js';
 
 /**
  * ============================================================================
@@ -34,15 +35,6 @@ const ACTION_META = {
 const ACTION_OPTIONS = Object.keys(ACTION_META).map((key) => ({ key, label: ACTION_META[key].text }));
 
 const POLL_MS = 15_000;
-
-function timeAgo(iso) {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'baru saja';
-  if (mins < 60) return `${mins} menit lalu`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} jam lalu`;
-  return `${Math.floor(hours / 24)} hari lalu`;
-}
 
 export default function PlatformActivity() {
   const { pushError } = useNotification();

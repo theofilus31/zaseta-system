@@ -9,6 +9,8 @@ import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 import LineChartCard from '../components/ui/sc-line-chart.tsx';
 import { ICON_STROKE, IconWallet, IconBuilding, IconPulse } from '../components/ui/icons.jsx';
+import { rupiah } from '../utils/currency.js';
+import { timeAgo } from '../utils/timeAgo.js';
 
 /**
  * ============================================================================
@@ -29,7 +31,6 @@ import { ICON_STROKE, IconWallet, IconBuilding, IconPulse } from '../components/
  */
 
 const angka = (v) => Number(v).toLocaleString('id-ID');
-const rupiah = (v) => `Rp ${Number(v).toLocaleString('id-ID')}`;
 
 /* Ikon 4 StatCard di bawah — pola sama seperti Dashboard.jsx tenant: svg
    inline dengan style stroke bersama, bukan ikon Font Awesome, supaya
@@ -62,15 +63,6 @@ const ACTION_META = {
   scan: { text: 'memindai kode QR', dot: 'bg-accent-500' },
   export: { text: 'mengekspor data', dot: 'bg-ink-400' },
 };
-
-function timeAgo(iso) {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return 'baru saja';
-  if (mins < 60) return `${mins} menit lalu`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} jam lalu`;
-  return `${Math.floor(hours / 24)} hari lalu`;
-}
 
 export default function PlatformDashboard() {
   const { pushError } = useNotification();

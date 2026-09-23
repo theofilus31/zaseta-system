@@ -11,19 +11,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import StatusBadge, { STATUS_CONFIG, CONDITION_CONFIG } from '../components/ui/StatusBadge.jsx';
 import { SkeletonCards, Skeleton } from '../components/ui/Skeleton.jsx';
 import { ICON_STROKE, IconWallet, IconPulse } from '../components/ui/icons.jsx';
-
-/* ---------------- Format angka ---------------- */
-
-/** Rupiah ringkas — dasbor butuh angka yang terbaca sekilas, bukan 12 digit penuh. */
-function rupiahRingkas(n) {
-  const v = Number(n) || 0;
-  if (v >= 1_000_000_000) return `Rp ${(v / 1_000_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M`;
-  if (v >= 1_000_000) return `Rp ${(v / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
-  if (v >= 1_000) return `Rp ${(v / 1_000).toLocaleString('id-ID', { maximumFractionDigits: 0 })} rb`;
-  return `Rp ${v.toLocaleString('id-ID')}`;
-}
-
-const rupiahPenuh = (n) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
+import { rupiahRingkas, rupiahPenuh } from '../utils/currency.js';
 
 /* ---------------- Ikon KPI ---------------- */
 const IconBox = (p) => <svg {...p} viewBox="0 0 24 24" {...ICON_STROKE}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>;

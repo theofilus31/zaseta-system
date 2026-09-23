@@ -9,6 +9,7 @@ import StatCard from '../components/ui/StatCard.jsx';
 import { Skeleton, SkeletonRows } from '../components/ui/Skeleton.jsx';
 import { SearchableSelect, DateField } from '../components/ui/Form.jsx';
 import { todayLocal as today } from '../utils/dateLocal.js';
+import { rupiahRingkas, rupiahPenuh } from '../utils/currency.js';
 
 /**
  * ============================================================================
@@ -21,14 +22,6 @@ import { todayLocal as today } from '../utils/dateLocal.js';
  * ============================================================================
  */
 
-const rupiahRingkas = (n) => {
-  const v = Number(n) || 0;
-  if (v >= 1_000_000_000) return `Rp ${(v / 1_000_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M`;
-  if (v >= 1_000_000) return `Rp ${(v / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
-  if (v >= 1_000) return `Rp ${(v / 1_000).toLocaleString('id-ID', { maximumFractionDigits: 0 })} rb`;
-  return `Rp ${v.toLocaleString('id-ID')}`;
-};
-const rupiahPenuh = (n) => `Rp ${(Number(n) || 0).toLocaleString('id-ID')}`;
 
 export default function DepreciationReportPage() {
   const { pushError } = useNotification();
