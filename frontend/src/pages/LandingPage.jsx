@@ -318,7 +318,14 @@ function DashboardMockup() {
         <div className="absolute -top-9 -right-2 flex items-center gap-2 whitespace-nowrap rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 px-3 py-2 shadow-[0_14px_28px_-10px_rgba(35,125,63,.55),0_0_0_1px_rgba(47,156,79,.2)] motion-safe:animate-chip-glow sm:-top-12 sm:-right-8 sm:px-3.5 sm:py-2.5">
           <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white sm:h-7 sm:w-7">
             <i className="fas fa-building text-[10px]" aria-hidden="true" />
-            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-white motion-safe:animate-badge-pulse" aria-hidden="true" />
+            {/* Titik "berdenyut" ala notification badge -- dua lapis (cincin
+                yang membesar & memudar + titik solid diam di atasnya), pola
+                standar Tailwind supaya gerakannya jelas terlihat, bukan cuma
+                opacity naik-turun tipis yang gampang terlewat mata. */}
+            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-white opacity-75" aria-hidden="true" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-white" aria-hidden="true" />
+            </span>
           </span>
           <span className="text-[9px] font-black uppercase tracking-wide text-white sm:text-[10.5px]">
             <b className="text-[13px] sm:text-[14px]">{tenantCount}</b> Tenant Sudah Bergabung
@@ -331,10 +338,16 @@ function DashboardMockup() {
   );
 }
 
+/* `left` sengaja tidak terlalu negatif -- kolom kiri (teks "Data terkunci...")
+   dan kolom kanan (mockup ini) dipisahkan celah TETAP (gap-14 = 56px) begitu
+   lebar layar mencapai `lg` dan seterusnya (container dibatasi max-w-6xl,
+   jadi celahnya tidak ikut melebar lagi di layar yang lebih lebar dari itu).
+   Offset yang terlalu jauh ke kiri membuat ikon ini menabrak teks kolom kiri
+   persis di titik itu -- pernah ketahuan (lihat riwayat commit). */
 const ORBIT_ASSETS = [
-  { icon: 'fa-laptop', bg: 'bg-info-600', left: -96, top: -78, float: 2.6 },
-  { icon: 'fa-video', bg: 'bg-accent-600', left: -108, top: 2, float: 3.1 },
-  { icon: 'fa-box', bg: 'bg-warning-600', left: -66, top: 66, float: 2.9 },
+  { icon: 'fa-laptop', bg: 'bg-info-600', left: -50, top: -78, float: 2.6 },
+  { icon: 'fa-video', bg: 'bg-accent-600', left: -60, top: 2, float: 3.1 },
+  { icon: 'fa-box', bg: 'bg-warning-600', left: -22, top: 66, float: 2.9 },
 ];
 
 /**
