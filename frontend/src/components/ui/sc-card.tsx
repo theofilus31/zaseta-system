@@ -8,7 +8,9 @@
  * berkas TSX yang baru (sempat terjadi nyata & bikin build gagal saat
  * integrasi ini pertama dicoba). Awalan `sc-` (dipakai juga di seluruh
  * token warna, lihat tailwind.config.js) menghindari tabrakan itu di semua
- * berkas baru: sc-card, sc-button, sc-badge, sc-avatar, sc-line-charts-9.
+ * berkas baru: sc-card, sc-line-charts-9 (sc-button/sc-badge/sc-avatar dari
+ * integrasi yang sama sempat ada juga, tapi tidak pernah benar-benar dipakai
+ * di aplikasi -- sudah dihapus).
  */
 import * as React from 'react';
 import { cn } from '@/lib/utils';

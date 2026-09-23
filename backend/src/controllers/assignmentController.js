@@ -24,17 +24,6 @@ const { clampPagination } = require('../utils/pagination');
 
 const CONDITIONS = ['baik', 'rusak_ringan', 'rusak_berat'];
 
-/** Penugasan yang sedang aktif untuk sebuah aset, kalau ada. */
-async function findActiveAssignment(assetId) {
-  const [rows] = await pool.query(
-    `SELECT * FROM asset_assignments
-     WHERE asset_id = :assetId AND returned_at IS NULL
-     ORDER BY assigned_at DESC, id DESC LIMIT 1`,
-    { assetId }
-  );
-  return rows[0] || null;
-}
-
 // GET /api/assignments?assetId=&holder=&activeOnly=&page=&limit=
 const listAssignments = asyncHandler(async (req, res) => {
   const { assetId, holder = '', activeOnly } = req.query;
@@ -457,4 +446,4 @@ const getBast = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listAssignments, checkOut, checkIn, listHolders, findActiveAssignment, getBast, performCheckOut };
+module.exports = { listAssignments, checkOut, checkIn, listHolders, getBast, performCheckOut };

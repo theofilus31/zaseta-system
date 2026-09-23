@@ -2,6 +2,12 @@
 -- Asset Inventory System — Database Schema (MySQL 8.0+ / MariaDB 10.4+)
 -- Engine: InnoDB, Charset: utf8mb4
 -- =====================================================================
+--  ARSIP -- TIDAK LAGI DIPAKAI. Sumber kebenaran skema sekarang
+--  `backend/schema.postgres.sql` (PostgreSQL) -- lihat catatan di kepala
+--  berkas itu. Berkas ini dibiarkan utuh sebagai arsip sejarah proyek
+--  (versi MySQL/MariaDB sebelum pindah ke PostgreSQL), bukan untuk
+--  instalasi baru mana pun.
+-- =====================================================================
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
