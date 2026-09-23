@@ -1,7 +1,9 @@
 const ManualTransferProvider = require('./ManualTransferProvider');
+const PakasirProvider = require('./PakasirProvider');
 
 const PROVIDERS = {
   manual: () => new ManualTransferProvider(),
+  pakasir: () => new PakasirProvider(),
   // midtrans: () => new MidtransProvider(...), // susulan begitu kredensial tersedia
   // xendit: () => new XenditProvider(...),     // susulan begitu kredensial tersedia
 };

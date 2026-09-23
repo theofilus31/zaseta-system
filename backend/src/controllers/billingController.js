@@ -4,6 +4,7 @@ const logAudit = require('../utils/auditLogger');
 const { getAllPlans, getPlan, getSelfServePlanIds, isUpgrade } = require('../config/plans');
 const { activateSubscription, cancelActiveSubscription, priceFor } = require('../services/subscriptionService');
 const { sendUpgradeRequestNotification, sendUpgradeRequestResolved } = require('../utils/mailer');
+const { getPaymentGateway } = require('../services/paymentGateway');
 
 /**
  * ============================================================================
@@ -392,6 +393,65 @@ function resolveUpgradeRequest(approve) {
   });
 }
 
+/**
+ * POST /api/billing/webhooks/pakasir — TANPA AUTH (dipanggil server Pakasir
+ * sendiri, bukan pengguna kita; lihat routes/billingRoutes.js -- didaftarkan
+ * SEBELUM router.use(authenticate)). Otentikasinya lewat header X-Secret,
+ * diverifikasi di dalam PakasirProvider.handleWebhook, BUKAN token JWT.
+ *
+ * Endpoint ini men-SINKRON-kan status invoice yang invoice_number-nya cocok
+ * dengan order_id dari webhook -- ia TIDAK mengaktifkan subscription baru
+ * sendiri. Belum ada alur checkout self-serve yang membuat invoice pending
+ * lewat Pakasir dulu (lihat catatan di services/paymentGateway/
+ * PakasirProvider.js): endpoint ini infrastruktur penerimanya, siap dipakai
+ * begitu alur pembuatan invoice pending itu ditambahkan.
+ */
+const handlePakasirWebhook = asyncHandler(async (req, res) => {
+  const provider = getPaymentGateway('pakasir');
+
+  let result;
+  try {
+    result = await provider.handleWebhook(req.body, req.headers);
+  } catch (err) {
+    return res.status(err.status || 400).json({ message: err.message });
+  }
+
+  const [[invoice]] = await pool.query(
+    `SELECT id, tenant_id, status FROM invoices WHERE invoice_number = :orderId`,
+    { orderId: result.orderId }
+  );
+  if (!invoice) {
+    // Webhook terverifikasi asli, tapi tidak ada invoice kita yang cocok --
+    // balas 200 supaya Pakasir tidak menganggapnya gagal & mengulang terus;
+    // dicatat di log server untuk ditelusuri manual.
+    console.error(`Webhook Pakasir: order_id "${result.orderId}" tidak cocok dengan invoice mana pun.`);
+    return res.status(200).json({ message: 'Diterima, tidak ada invoice yang cocok.' });
+  }
+  if (invoice.status === 'paid') {
+    return res.status(200).json({ message: 'Invoice sudah lunas sebelumnya, diabaikan.' });
+  }
+
+  await pool.query(
+    `UPDATE invoices
+     SET status = :status, provider = 'pakasir', provider_transaction_id = :txnId,
+         payment_method = 'pakasir', paid_at = :paidAt, updated_at = NOW()
+     WHERE id = :id`,
+    {
+      id: invoice.id,
+      status: result.status,
+      txnId: result.providerTransactionId,
+      paidAt: result.status === 'paid' ? (result.completedAt || new Date()) : null,
+    }
+  );
+
+  await logAudit({
+    userId: null, tenantId: invoice.tenant_id, action: 'update', entityType: 'invoice', entityId: invoice.id,
+    newValues: { status: result.status, provider: 'pakasir', providerTransactionId: result.providerTransactionId },
+  });
+
+  res.status(200).json({ message: 'Webhook diproses.' });
+});
+
 module.exports = {
   getPlans,
   getMyBilling,
@@ -402,4 +462,5 @@ module.exports = {
   listUpgradeRequests,
   approveUpgradeRequest: resolveUpgradeRequest(true),
   rejectUpgradeRequest: resolveUpgradeRequest(false),
+  handlePakasirWebhook,
 };

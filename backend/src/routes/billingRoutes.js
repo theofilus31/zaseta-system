@@ -9,6 +9,13 @@ const { publicReadLimiter } = require('../middleware/publicLimiter');
 // tidak ada alasan membiarkannya satu-satunya rute publik tanpa pembatas.
 router.get('/plans', publicReadLimiter, ctrl.getPlans);
 
+// Webhook Pakasir — TANPA AUTH (dipanggil server Pakasir, tidak punya token
+// kita). Diautentikasi lewat header X-Secret di dalam controller/provider,
+// bukan requirePermission. publicReadLimiter dipakai sebagai pembatas dasar
+// terhadap banjir permintaan; verifikasi secret-nya sendiri yang menolak
+// permintaan palsu.
+router.post('/webhooks/pakasir', publicReadLimiter, ctrl.handlePakasirWebhook);
+
 router.use(authenticate);
 
 // Menu "Langganan" dalam aplikasi — sama seperti Pengaturan, tetap butuh izin
