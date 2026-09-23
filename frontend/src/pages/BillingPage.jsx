@@ -149,28 +149,47 @@ export default function BillingPage() {
      menampilkan kartu perbandingan paket berjajar. */
   useLayoutWidth(loading ? 'narrow' : 'default');
 
-  function load() {
-    setLoading(true);
-    Promise.all([axiosClient.get('/billing/me'), axiosClient.get('/billing/plans'), axiosClient.get('/billing/invoices')])
+  /* `withSkeleton=false` dipakai muat ulang di latar belakang (lihat listener
+     fokus di bawah) supaya tidak mengedipkan seluruh halaman jadi skeleton
+     tiap kali jendela disorot lagi (mis. sekadar pindah tab lalu kembali). */
+  function load(withSkeleton = true) {
+    if (withSkeleton) setLoading(true);
+    return Promise.all([axiosClient.get('/billing/me'), axiosClient.get('/billing/plans'), axiosClient.get('/billing/invoices')])
       .then(([me, all, inv]) => {
         setData(me.data);
         setPlans(all.data.plans);
         setInvoices(inv.data.invoices);
       })
       .catch((err) => pushError(err.response?.data?.message || 'Gagal memuat data langganan.'))
-      .finally(() => setLoading(false));
+      .finally(() => { if (withSkeleton) setLoading(false); });
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Pembayaran Pakasir selesai di TAB/HALAMAN LAIN (redirect penuh ke
-     app.pakasir.com, bukan popup) — begitu tenant kembali ke tab ini
-     (kembali lewat tombol back, atau membuka lagi dari riwayat), muat ulang
-     supaya status "menunggu pembayaran" langsung terganti begitu webhook
-     Pakasir sempat memprosesnya di sisi server SELAGI tenant masih di
-     halaman pembayaran. Tanpa ini tenant harus me-refresh manual. */
+     app.pakasir.com, bukan popup, lewat `window.location.href` di
+     handleCheckout/handleResumeCheckout) — begitu tenant kembali ke tab ini:
+     1. Muat ulang data langganan, supaya status "menunggu pembayaran" atau
+        paket yang sudah aktif langsung terganti begitu webhook Pakasir
+        sempat memprosesnya di sisi server SELAGI tenant masih di halaman
+        pembayaran. Tanpa ini tenant harus me-refresh manual.
+     2. Reset tombol "Lanjut ke Pembayaran"/"Lanjutkan Pembayaran" yang
+        macet di keadaan loading -- begitu `window.location.href` dieksekusi
+        halaman ini SEHARUSNYA berpindah, tapi tombol "kembali" peramban bisa
+        memulihkan halaman ini apa adanya dari bfcache (bukan memuat ulang
+        dari nol), jadi state `submitting`/`resumingCheckout` yang di-set
+        SESAAT sebelum redirect tadi ikut terpulihkan dalam keadaan macet
+        kalau tidak direset di sini. */
   useEffect(() => {
-    function onFocus() { load(); }
+    function onFocus() {
+      if (document.visibilityState === 'hidden') return;
+      setSubmitting((wasSubmitting) => {
+        if (wasSubmitting) { setPicked(null); setError(''); }
+        return false;
+      });
+      setResumingCheckout(false);
+      load(false);
+    }
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => {

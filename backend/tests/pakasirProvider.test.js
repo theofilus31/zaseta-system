@@ -76,7 +76,10 @@ test('createCheckout: respons galat Pakasir dilempar sebagai Error', async (t) =
 });
 
 test('createCheckout: melempar error jelas kalau kredensial belum diisi', async () => {
-  const provider = new PakasirProvider({});
+  // String kosong eksplisit (BUKAN {} polos) -- constructor cuma jatuh ke
+  // process.env.PAKASIR_* kalau nilainya null/undefined, dan proses tes ini
+  // memuat .env sungguhan (lewat config/db.js) yang bisa saja sudah terisi.
+  const provider = new PakasirProvider({ slug: '', apiKey: '' });
   await assert.rejects(
     () => provider.createCheckout({ invoiceNumber: 'X', amount: 1000 }),
     /belum dikonfigurasi/
