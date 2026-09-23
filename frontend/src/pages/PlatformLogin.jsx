@@ -5,6 +5,7 @@ import PasswordInput from '../components/ui/PasswordInput.jsx';
 import Button from '../components/ui/Button.jsx';
 import { TextField, FormError } from '../components/ui/Form.jsx';
 import ProductBrandMark from '../components/ProductBrandMark.jsx';
+import GoogleSignInButton, { GOOGLE_AUTH_ENABLED } from '../components/GoogleSignInButton.jsx';
 
 /**
  * ============================================================================
@@ -22,7 +23,7 @@ import ProductBrandMark from '../components/ProductBrandMark.jsx';
  * ============================================================================
  */
 export default function PlatformLogin() {
-  const { login } = usePlatformAuth();
+  const { login, googleLogin } = usePlatformAuth();
   const navigate = useNavigate();
 
   const [username, setUsername] = useState('');
@@ -39,6 +40,29 @@ export default function PlatformLogin() {
       navigate('/platform/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal masuk. Periksa nama pengguna dan kata sandi Anda.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* TIDAK ADA alur "belum ada akun -> daftar" seperti Login.jsx universal --
+     admin platform selalu dibuat lebih dulu oleh admin lain (lihat
+     platformController.createPlatformAdmin), jadi NO_ACCOUNT_FOUND di sini
+     cukup ditampilkan sebagai galat, sama seperti tombol Google di
+     TenantLogin.jsx. */
+  async function handleGoogleCredential(credential) {
+    setError('');
+    setLoading(true);
+    try {
+      await googleLogin(credential);
+      navigate('/platform/dashboard');
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.code === 'NO_ACCOUNT_FOUND') {
+        setError('Belum ada akun admin platform dengan surel Google ini.');
+        return;
+      }
+      setError(data?.message || 'Gagal masuk dengan Google. Coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -76,6 +100,18 @@ export default function PlatformLogin() {
             {loading ? 'Memproses…' : 'Masuk'}
           </Button>
         </form>
+
+        {GOOGLE_AUTH_ENABLED && (
+          <>
+            <div className="flex items-center gap-3 my-5" aria-hidden="true">
+              <span className="h-px flex-1 bg-ink-200" />
+              <span className="text-xs font-medium text-ink-400">ATAU</span>
+              <span className="h-px flex-1 bg-ink-200" />
+            </div>
+
+            <GoogleSignInButton onCredential={handleGoogleCredential} text="signin_with" />
+          </>
+        )}
       </div>
     </div>
   );

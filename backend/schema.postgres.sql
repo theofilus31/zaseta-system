@@ -445,6 +445,10 @@ CREATE TABLE platform_admins (
     name            VARCHAR(150) NOT NULL,
     email           VARCHAR(150) NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
+    google_id       VARCHAR(255) NULL UNIQUE,  -- klaim "sub" token Google -- lihat migration_platform_admin_google_login.sql.
+                                                -- UNIQUE (beda dari users.google_id yang TIDAK unik) karena tabel
+                                                -- ini global tunggal tanpa tenant_id, jadi satu akun Google hanya
+                                                -- boleh tertaut ke SATU admin platform.
     status          VARCHAR(20) NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active','inactive')),
     token_version   INT NOT NULL DEFAULT 1,

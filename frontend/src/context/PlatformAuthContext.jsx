@@ -45,6 +45,16 @@ export function PlatformAuthProvider({ children }) {
     return data.admin;
   }
 
+  /** "Masuk dengan Google" — padanan login() di atas, `credential` adalah ID
+      token JWT dari Google Identity Services (lihat GoogleSignInButton.jsx). */
+  async function googleLogin(credential) {
+    const { data } = await platformAxiosClient.post('/platform-auth/google-login', { credential });
+    localStorage.setItem('platformToken', data.token);
+    localStorage.setItem('platformAdmin', JSON.stringify(data.admin));
+    setAdmin(data.admin);
+    return data.admin;
+  }
+
   function logout() {
     localStorage.removeItem('platformToken');
     localStorage.removeItem('platformAdmin');
@@ -52,7 +62,7 @@ export function PlatformAuthProvider({ children }) {
   }
 
   return (
-    <PlatformAuthContext.Provider value={{ admin, login, logout, setAdmin }}>
+    <PlatformAuthContext.Provider value={{ admin, login, googleLogin, logout, setAdmin }}>
       {children}
     </PlatformAuthContext.Provider>
   );
