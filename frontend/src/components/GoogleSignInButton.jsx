@@ -75,19 +75,41 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
       callback: (response) => onCredentialRef.current?.(response.credential),
     });
 
-    containerRef.current.innerHTML = '';
-    window.google.accounts.id.renderButton(containerRef.current, {
-      type: 'standard',
-      theme: 'outline',
-      size: 'large',
-      shape: 'pill',
-      text,
-      logo_alignment: 'center',
-      width: 336,
-    });
+    const container = containerRef.current;
+
+    /* `width` WAJIB angka piksel tetap -- API renderButton Google tidak
+       menerima "100%"/"auto". 336 (bawaan sebelumnya) melebar keluar di HP
+       sempit (kontainernya sendiri, mengikuti padding form di sekelilingnya,
+       sering < 336px) -- laporan pengguna: tombol "mepet ke sisi kanan kiri
+       device". Diukur dari LEBAR KONTAINER SUNGGUHAN (offsetWidth, sudah
+       final saat efek ini jalan sesudah skrip GIS termuat), dibatasi 336
+       sebagai plafon supaya tetap proporsional di layar lebar seperti dulu,
+       bukan sekadar mengecilkan tombol menerus mengikuti bingkai. */
+    function render() {
+      const width = Math.min(336, container.offsetWidth || 336);
+      container.innerHTML = '';
+      window.google.accounts.id.renderButton(container, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text,
+        logo_alignment: 'center',
+        width,
+      });
+    }
+
+    render();
+
+    /* Render ulang kalau kontainer berganti ukuran (rotasi layar, atau jendela
+       diubah ukurannya) -- tanpa ini tombol yang sudah telanjur dirender di
+       lebar lama tetap "kaku" di ukuran itu sampai halaman dimuat ulang. */
+    const observer = new ResizeObserver(() => render());
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [ready, text]);
 
   if (!CLIENT_ID) return null;
 
-  return <div ref={containerRef} className="flex justify-center" />;
+  return <div ref={containerRef} className="flex w-full justify-center" />;
 }
