@@ -95,6 +95,30 @@ test('platform: approve/reject testimoni, dan tidak bisa ditinjau dua kali', asy
   assert.equal(secondApprove.statusCode, 409, 'testimoni yang sudah ditinjau tidak boleh ditinjau ulang');
 });
 
+test('listPublicTestimonials: menampilkan SEMUA yang approved (bukan cuma cuplikan kecil), dan ?limit= dihormati', async (t) => {
+  const tenantId = await createTestTenant('free');
+  t.after(() => dropTestTenant(tenantId));
+
+  // 15 testimoni approved -- lebih dari batas lama (12) yang dulu diam-diam
+  // menyembunyikan testimoni lama begitu ada yang baru.
+  const ids = [];
+  for (let i = 0; i < 15; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const userId = await createTestUser(tenantId);
+    // eslint-disable-next-line no-await-in-loop
+    const submitted = await runMiddleware(submitTestimonial, mockReq({ tenantId, userId, body: { rating: 5, message: `Testimoni ke-${i}` } }));
+    ids.push(submitted.res.body.id);
+  }
+  await pool.query(`UPDATE testimonials SET status = 'approved', reviewed_at = NOW() WHERE id = ANY(:ids::bigint[])`, { ids });
+
+  const { res: allRes } = await runMiddleware(listPublicTestimonials, mockReq({ query: {} }));
+  const approvedIds = new Set(allRes.body.map((x) => x.id));
+  assert.equal(ids.filter((id) => approvedIds.has(id)).length, 15, 'ke-15 testimoni approved harus semuanya tampil, tidak dipotong ke 12 seperti batas lama');
+
+  const { res: limitedRes } = await runMiddleware(listPublicTestimonials, mockReq({ query: { limit: '3' } }));
+  assert.equal(limitedRes.body.length, 3, '?limit= tetap dihormati untuk pemanggil yang memang cuma mau cuplikan kecil');
+});
+
 test('platform: reject testimoni tidak membuatnya muncul di daftar publik', async (t) => {
   const tenantId = await createTestTenant('free');
   t.after(() => dropTestTenant(tenantId));

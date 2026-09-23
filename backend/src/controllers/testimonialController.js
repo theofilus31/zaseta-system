@@ -59,17 +59,32 @@ const skipTestimonial = asyncHandler(async (req, res) => {
   res.json({ testimonialStatus: 'skipped' });
 });
 
-// GET /api/public/testimonials — publik, TANPA AUTH. Hanya yang 'approved',
-// tanpa data tenant yang bisa dipakai mengorek identitas akun (tidak ada
-// email/username, cuma nama & jabatan yang MEMANG dimaksudkan tenant untuk
-// tampil publik saat mengisi).
+// Batas keras -- section "Semua Testimoni" di landing page dimaksudkan
+// menampilkan SELURUH testimoni yang disetujui (bukan cuma cuplikan
+// terbaru), supaya testimoni lama tidak diam-diam hilang begitu tenant baru
+// menambah testimoni baru. Angka ini murni jaring pengaman kalau suatu saat
+// jumlahnya jadi sangat banyak, bukan batas tampilan yang disengaja --
+// naikkan saja kalau sampai benar-benar terlampaui.
+const PUBLIC_LIMIT_MAX = 200;
+const PUBLIC_LIMIT_DEFAULT = 60;
+
+// GET /api/public/testimonials?limit= — publik, TANPA AUTH. Hanya yang
+// 'approved', tanpa data tenant yang bisa dipakai mengorek identitas akun
+// (tidak ada email/username, cuma nama & jabatan yang MEMANG dimaksudkan
+// tenant untuk tampil publik saat mengisi).
 const listPublicTestimonials = asyncHandler(async (req, res) => {
+  const requested = Number(req.query.limit);
+  const limit = Number.isInteger(requested) && requested > 0
+    ? Math.min(requested, PUBLIC_LIMIT_MAX)
+    : PUBLIC_LIMIT_DEFAULT;
+
   const [rows] = await pool.query(
     `SELECT id, author_name AS "authorName", author_role AS "authorRole", company_name AS "companyName",
             rating, message
      FROM testimonials WHERE status = 'approved'
      ORDER BY reviewed_at DESC
-     LIMIT 12`
+     LIMIT :limit`,
+    { limit }
   );
   res.json(rows);
 });
