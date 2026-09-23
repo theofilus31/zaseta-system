@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import PlatformLayout from '../components/PlatformLayout.jsx';
 import axiosClient from '../api/axiosClient.js';
 import { useNotification } from '../context/NotificationContext.jsx';
@@ -22,10 +21,11 @@ import { ICON_STROKE, IconWallet, IconBuilding } from '../components/ui/icons.js
  *      jumlah tenant aktif SEKARANG di paket itu). Bisa berubah besok kalau
  *      ada yang upgrade/downgrade/berhenti.
  *    - `revenueAllTime`/`revenueGrowth` — REALISASI, dari tabel `invoices`
- *      yang sungguhan tercatat saat admin menyetujui upgrade.
- *  Riwayat konversi LENGKAP (dengan aksi setuju/tolak) ada di halaman
- *  Permintaan Upgrade — di sini cuma pratinjau 6 terbaru + tautan ke sana,
- *  supaya tidak ada dua tempat yang mengelola hal yang sama.
+ *      yang sungguhan tercatat saat pembayaran Pakasir dikonfirmasi lunas
+ *      (tidak ada lagi verifikasi manual admin, lihat billingController.js).
+ *  "Konversi Terbaru" di bawah cuma pratinjau 6 terbaru — tidak ada lagi
+ *  halaman riwayat lengkap terpisah untuk ditautkan (menu Permintaan Upgrade
+ *  sudah dihapus bersamaan dengan alur verifikasi manual).
  * ============================================================================
  */
 
@@ -51,8 +51,10 @@ const RANGE_OPTIONS = [
   { value: 90, label: '90 Hari' },
 ];
 
-const STATUS_TONE = { approved: 'brand', rejected: 'danger' };
-const STATUS_LABEL = { approved: 'Disetujui', rejected: 'Ditolak' };
+// 'approved'/'rejected' dipertahankan untuk baris LAMA dari alur verifikasi
+// manual sebelum migration_pakasir_self_serve_billing.sql.
+const STATUS_TONE = { paid: 'brand', applied: 'neutral', canceled: 'danger', approved: 'brand', rejected: 'danger' };
+const STATUS_LABEL = { paid: 'Lunas', applied: 'Diterapkan', canceled: 'Dibatalkan', approved: 'Disetujui', rejected: 'Ditolak' };
 
 export default function PlatformRevenue() {
   const { pushError } = useNotification();
@@ -156,9 +158,9 @@ export default function PlatformRevenue() {
           </div>
 
           <Card>
-            <CardHeader title="Konversi Terbaru" description="Enam pengajuan upgrade terakhir yang sudah diputuskan." />
+            <CardHeader title="Konversi Terbaru" description="Enam perubahan paket terakhir." />
             {data.recentConversions.length === 0 && (
-              <p className="text-sm text-ink-400 text-center py-6">Belum ada permintaan upgrade yang diputuskan.</p>
+              <p className="text-sm text-ink-400 text-center py-6">Belum ada perubahan paket.</p>
             )}
             <div className="divide-y divide-ink-100">
               {data.recentConversions.map((c) => (
@@ -173,13 +175,6 @@ export default function PlatformRevenue() {
                 </div>
               ))}
             </div>
-            <Link
-              to="/platform/billing-requests"
-              className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 hover:text-brand-700"
-            >
-              Lihat semua riwayat permintaan
-              <i className="fas fa-arrow-right text-[10px]" aria-hidden="true" />
-            </Link>
           </Card>
         </>
       )}

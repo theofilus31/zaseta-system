@@ -1,23 +1,37 @@
+const crypto = require('crypto');
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const logAudit = require('../utils/auditLogger');
 const { getAllPlans, getPlan, getSelfServePlanIds, isUpgrade } = require('../config/plans');
 const { activateSubscription, cancelActiveSubscription, priceFor } = require('../services/subscriptionService');
-const { sendUpgradeRequestNotification, sendUpgradeRequestResolved } = require('../utils/mailer');
+const { sendUpgradeRequestResolved } = require('../utils/mailer');
 const { getPaymentGateway } = require('../services/paymentGateway');
 
 /**
  * ============================================================================
- *  BILLING — Fase 4 SaaS (lihat migration_billing_phase4.sql,
- *  migration_billing_subscriptions.sql)
+ *  BILLING — Fase 4 SaaS + Pakasir self-serve (lihat migration_billing_
+ *  phase4.sql, migration_billing_subscriptions.sql,
+ *  migration_pakasir_self_serve_billing.sql)
  * ============================================================================
- *  Belum ada payment gateway sungguhan TERPASANG (lihat
- *  services/paymentGateway/ — abstraksinya sudah siap, provider 'manual'
- *  yang aktif sekarang): upgrade paket diajukan tenant lewat
- *  createUpgradeRequest, lalu diverifikasi MANUAL (transfer bank) oleh admin
- *  platform lewat resolveUpgradeRequest. Info rekening transfer diambil dari
- *  BILLING_TRANSFER_INFO di .env supaya gampang diganti tanpa deploy ulang
- *  kode — lihat backend/.env.example.
+ *  Ganti paket berbayar dibayar LANGSUNG lewat Pakasir (payment gateway,
+ *  lihat services/paymentGateway/PakasirProvider.js) dan diaktifkan OTOMATIS
+ *  begitu webhook mengonfirmasi lunas (handlePakasirWebhook) — TIDAK ADA lagi
+ *  verifikasi transfer manual oleh admin platform. Pindah ke paket TANPA
+ *  biaya (Free) diterapkan seketika (tidak ada uang untuk diverifikasi).
+ *
+ *  Alurnya:
+ *  1. requestPlanChange — tenant memilih paket baru. Kalau berbayar: buat
+ *     baris plan_upgrade_requests (status 'pending', harga dikunci) + minta
+ *     Pakasir membuatkan checkout, kembalikan checkoutUrl untuk diarahkan.
+ *     Kalau gratis: terapkan seketika lewat activateSubscription, tidak ada
+ *     checkout sama sekali.
+ *  2. Tenant membayar di halaman Pakasir.
+ *  3. handlePakasirWebhook menerima konfirmasi, cross-check ke API Pakasir
+ *     (lihat PakasirProvider.handleWebhook), lalu memanggil
+ *     activateSubscription dengan harga yang DIKUNCI di langkah 1.
+ *
+ *  cancelPendingCheckout membiarkan tenant membatalkan checkout yang belum
+ *  dibayar supaya bisa memilih paket lain.
  *
  *  Penulisan subscriptions/invoices/tenants.plan SELALU lewat
  *  services/subscriptionService.js — TIDAK PERNAH `UPDATE tenants SET
@@ -43,9 +57,9 @@ async function currentUsage(tenantId) {
 }
 
 /** Bagian pemakaian yang MELEBIHI batas paket target — dipakai
- *  createUpgradeRequest untuk peringatan downgrade (rule "soft limit": data
- *  lama tidak pernah dihapus, tapi tenant harus diberi tahu sebelum
- *  pengajuannya benar-benar diproses admin). Kosong berarti aman. */
+ *  requestPlanChange untuk peringatan downgrade (rule "soft limit": data
+ *  lama tidak pernah dihapus, tapi tenant harus diberi tahu di muka). Kosong
+ *  berarti aman. */
 function usageExceedingPlan(usage, plan) {
   const exceeded = [];
   if (plan.maxAssets !== null && usage.assets > plan.maxAssets) exceeded.push('aset');
@@ -63,10 +77,10 @@ const getPlans = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET /api/billing/me — paket, pemakaian, dan permintaan upgrade tenant yang
+ * GET /api/billing/me — paket, pemakaian, dan checkout tertunda tenant yang
  * sedang login. Sengaja hanya butuh authenticate (tanpa requirePermission
  * khusus) supaya SEMUA pengguna tenant bisa melihat batas paketnya sendiri —
- * mengajukan upgrade tetap dijaga terpisah (lihat createUpgradeRequest).
+ * mengganti paket tetap dijaga terpisah (lihat requestPlanChange).
  */
 const getMyBilling = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenant_id;
@@ -78,12 +92,12 @@ const getMyBilling = asyncHandler(async (req, res) => {
   const plan = getPlan(tenantRow.plan) || getPlan('free');
   const usage = await currentUsage(tenantId);
 
-  // `price`/`currency` = harga yang DIKUNCI saat pengajuan (lihat
-  // createUpgradeRequest) — ditampilkan apa adanya di sini supaya tenant
-  // tahu persis angka yang akan ditagihkan, walau katalog sempat berubah
-  // sesudahnya sebelum admin sempat menyetujui.
+  // `price`/`currency` = harga yang DIKUNCI saat checkout dibuat (lihat
+  // requestPlanChange) — ditampilkan apa adanya di sini supaya tenant tahu
+  // persis angka yang akan ditagihkan, walau katalog sempat berubah
+  // sesudahnya sebelum pembayaran selesai.
   const [pendingRows] = await pool.query(
-    `SELECT id, requested_plan AS "requestedPlan", billing_cycle AS "billingCycle", price, currency, note, created_at AS "createdAt"
+    `SELECT id, requested_plan AS "requestedPlan", billing_cycle AS "billingCycle", price, currency, created_at AS "createdAt"
      FROM plan_upgrade_requests WHERE tenant_id = :tenantId AND status = 'pending'
      ORDER BY created_at DESC LIMIT 1`,
     { tenantId }
@@ -109,7 +123,6 @@ const getMyBilling = asyncHandler(async (req, res) => {
     usage,
     pendingRequest: pendingRows[0] || null,
     subscription: currentSub || null,
-    transferInfo: process.env.BILLING_TRANSFER_INFO || null,
   });
 });
 
@@ -164,28 +177,36 @@ const getInvoice = asyncHandler(async (req, res) => {
 });
 
 /**
- * POST /api/billing/upgrade-requests — { requestedPlan, billingCycle?, note? }
+ * POST /api/billing/checkout — { requestedPlan, billingCycle? }
  * Admin-only (lihat routes/billingRoutes.js): keputusan finansial/kontraktual,
  * bukan sesuatu yang masuk akal didelegasikan lewat matriks izin per-menu
  * biasa — sama seperti alasan requireRole dipakai di tempat lain (Profil).
  *
  * Dipakai untuk UPGRADE maupun DOWNGRADE — satu-satunya jalur pindah paket,
- * dibedakan lewat isUpgrade() murni untuk keperluan tampilan/notifikasi,
- * bukan untuk melarang salah satunya.
+ * dibedakan lewat isUpgrade() murni untuk keperluan tampilan, bukan untuk
+ * melarang salah satunya. Paket TANPA biaya (harga 0, mis. Free) diterapkan
+ * SEKETIKA tanpa checkout; paket berbayar WAJIB dibayar dulu lewat Pakasir
+ * sebelum aktif (lihat handlePakasirWebhook).
+ *
+ * Idempotent untuk permintaan yang SUDAH pending & PLAN-nya SAMA: dipanggil
+ * ulang mengembalikan checkoutUrl yang sama (Pakasir sendiri "find or
+ * create" per order_id+amount+method) — dipakai tombol "Lanjutkan
+ * Pembayaran" di BillingPage kalau tenant sempat meninggalkan halaman
+ * checkout tanpa membayar.
  *
  * `billingCycle` ('monthly'/'yearly', bawaan 'monthly') dicatat APA ADANYA
- * dari pilihan tenant — dipakai resolveUpgradeRequest untuk menghitung masa
- * aktif saat disetujui. Paket Free selalu dipaksa 'monthly' (kolomnya NOT
- * NULL di skema, tapi siklus sama sekali tidak relevan untuk paket gratis).
+ * dari pilihan tenant — dipakai handlePakasirWebhook untuk menghitung masa
+ * aktif saat lunas. Paket Free selalu dipaksa 'monthly' (kolomnya NOT NULL
+ * di skema, tapi siklus sama sekali tidak relevan untuk paket gratis).
  */
-const createUpgradeRequest = asyncHandler(async (req, res) => {
-  const { requestedPlan, note } = req.body;
+const requestPlanChange = asyncHandler(async (req, res) => {
   const billingCycle = req.body.billingCycle === 'yearly' ? 'yearly' : 'monthly';
   const tenantId = req.user.tenant_id;
 
-  if (!getSelfServePlanIds().includes(requestedPlan)) {
+  if (!getSelfServePlanIds().includes(req.body.requestedPlan)) {
     return res.status(400).json({ message: 'Paket yang diajukan tidak valid.' });
   }
+  const requestedPlan = req.body.requestedPlan;
 
   const [[tenantRow]] = await pool.query(`SELECT plan, company_name AS "companyName" FROM tenants WHERE id = :tenantId`, { tenantId });
   if (requestedPlan === tenantRow.plan) {
@@ -193,27 +214,24 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
   }
 
   const [existingPending] = await pool.query(
-    `SELECT id FROM plan_upgrade_requests WHERE tenant_id = :tenantId AND status = 'pending' LIMIT 1`,
+    `SELECT id, requested_plan AS "requestedPlan", billing_cycle AS "billingCycle", price, order_id AS "orderId"
+     FROM plan_upgrade_requests WHERE tenant_id = :tenantId AND status = 'pending' LIMIT 1`,
     { tenantId }
   );
-  if (existingPending[0]) {
-    return res.status(409).json({ message: 'Anda sudah punya permintaan upgrade yang masih menunggu diproses.' });
-  }
 
   const requestedPlanConfig = getPlan(requestedPlan);
   const finalCycle = requestedPlanConfig?.price ? billingCycle : 'monthly';
-  // Dikunci DI SINI, bukan dihitung ulang saat admin menyetujui — lihat
-  // catatan panjang di subscriptionService.activateSubscription soal
-  // priceOverride. Tanpa ini, admin mengubah harga paket lewat menu Katalog
-  // Paket SELAGI permintaan ini menunggu akan diam-diam mengubah jumlah yang
-  // ditagihkan ke tenant, padahal dia mengajukan berdasarkan harga di sini.
+  // Dikunci DI SINI, bukan dihitung ulang saat webhook lunas — lihat catatan
+  // panjang di subscriptionService.activateSubscription soal priceOverride.
+  // Tanpa ini, admin mengubah harga paket lewat menu Katalog Paket SELAGI
+  // tenant belum sempat membayar akan diam-diam mengubah jumlah yang
+  // ditagihkan, padahal Pakasir sudah dibuatkan checkout dengan harga lama.
   const lockedPrice = priceFor(requestedPlanConfig, finalCycle);
 
-  // Peringatan downgrade (rule "soft limit") — TIDAK memblokir pengajuan,
+  // Peringatan downgrade (rule "soft limit") — TIDAK memblokir permintaan,
   // cuma memberi tahu tenant di muka bahwa datanya akan tetap aman tapi
   // penambahan baru terkunci sampai pemakaian turun di bawah batas paket
-  // target. Dihitung ulang lagi begitu admin menyetujui (lihat
-  // resolveUpgradeRequest) karena pemakaian bisa berubah selama menunggu.
+  // target.
   let downgradeWarning = null;
   if (!isUpgrade(tenantRow.plan, requestedPlan)) {
     const usage = await currentUsage(tenantId);
@@ -223,54 +241,115 @@ const createUpgradeRequest = asyncHandler(async (req, res) => {
     }
   }
 
-  const trimmedNote = note ? String(note).trim().slice(0, 2000) : null;
-  const [result] = await pool.query(
-    /* previous_plan: snapshot paket SAAT INI, bukan sekadar dihitung dari
-       tenants.plan saat riwayat dibaca nanti — begitu permintaan ini
-       disetujui, tenants.plan berubah, dan tanpa snapshot ini riwayat akan
-       terlihat seolah tenant "upgrade dari paket barunya sendiri". */
-    `INSERT INTO plan_upgrade_requests (tenant_id, requested_plan, previous_plan, billing_cycle, price, note, requested_by)
-     VALUES (:tenantId, :requestedPlan, :previousPlan, :billingCycle, :price, :note, :requestedBy)
-     RETURNING id`,
-    { tenantId, requestedPlan, previousPlan: tenantRow.plan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote, requestedBy: req.user.id }
-  );
-
-  await logAudit({
-    userId: req.user.id, action: 'create', entityType: 'plan_upgrade_request', entityId: result.insertId,
-    newValues: { requestedPlan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote },
-  });
-
-  // Surel ke admin platform bersifat best-effort — kegagalan kirim tidak boleh
-  // menggagalkan pengajuan itu sendiri (sama seperti pola surel di userController).
-  try {
-    const [platformAdmins] = await pool.query(
-      `SELECT email FROM users WHERE is_platform_admin = TRUE AND status = 'active' AND deleted_at IS NULL`
-    );
-    if (platformAdmins.length > 0) {
-      const reviewUrl = `${(process.env.FRONTEND_URL || '').replace(/\/$/, '')}/platform/billing-requests`;
-      await sendUpgradeRequestNotification({
-        to: platformAdmins.map((a) => a.email).join(','),
-        tenantName: tenantRow.companyName,
-        requesterName: req.user.name,
-        requesterEmail: req.user.email,
-        planName: getPlan(requestedPlan)?.name || requestedPlan,
-        note: trimmedNote,
-        reviewUrl,
-      });
+  // Paket TANPA biaya -- tidak ada pembayaran, terapkan seketika. Kalau ada
+  // checkout paket LAIN yang masih pending, batalkan dulu supaya tidak ada
+  // dua permintaan aktif sekaligus.
+  if (!lockedPrice) {
+    if (existingPending[0]) {
+      await pool.query(`UPDATE plan_upgrade_requests SET status = 'canceled', reviewed_at = NOW() WHERE id = :id`, { id: existingPending[0].id });
     }
-  } catch (err) {
-    console.error('Gagal mengirim surel notifikasi permintaan upgrade:', err.message);
+    await activateSubscription({ tenantId, planId: requestedPlan, billingCycle: finalCycle, createdBy: req.user.id, provider: 'system' });
+
+    const [result] = await pool.query(
+      `INSERT INTO plan_upgrade_requests (tenant_id, requested_plan, previous_plan, billing_cycle, price, requested_by, status, payment_provider, reviewed_at)
+       VALUES (:tenantId, :requestedPlan, :previousPlan, :billingCycle, 0, :requestedBy, 'applied', 'system', NOW())
+       RETURNING id`,
+      { tenantId, requestedPlan, previousPlan: tenantRow.plan, billingCycle: finalCycle, requestedBy: req.user.id }
+    );
+
+    await logAudit({
+      userId: req.user.id, action: 'update', entityType: 'plan_upgrade_request', entityId: result.insertId,
+      newValues: { requestedPlan, billingCycle: finalCycle, status: 'applied' },
+    });
+
+    return res.status(201).json({ id: result.insertId, requestedPlan, billingCycle: finalCycle, price: 0, status: 'applied', downgradeWarning, checkoutUrl: null });
   }
 
-  res.status(201).json({ id: result.insertId, requestedPlan, billingCycle: finalCycle, price: lockedPrice, note: trimmedNote, status: 'pending', downgradeWarning });
+  // Paket berbayar -- kalau tenant sudah punya checkout pending untuk paket
+  // YANG SAMA, minta ulang checkoutUrl-nya (idempotent) alih-alih menolak;
+  // untuk paket LAIN, tenant harus membatalkan dulu (lihat cancelPendingCheckout).
+  let requestId, orderId;
+  if (existingPending[0]) {
+    if (existingPending[0].requestedPlan !== requestedPlan) {
+      return res.status(409).json({ message: 'Anda punya pembayaran yang masih menunggu untuk paket lain. Batalkan dulu sebelum memilih paket ini.' });
+    }
+    requestId = existingPending[0].id;
+    orderId = existingPending[0].orderId;
+  } else {
+    orderId = crypto.randomUUID();
+    const [result] = await pool.query(
+      /* previous_plan: snapshot paket SAAT INI, bukan sekadar dihitung dari
+         tenants.plan saat riwayat dibaca nanti — begitu permintaan ini
+         lunas, tenants.plan berubah, dan tanpa snapshot ini riwayat akan
+         terlihat seolah tenant "upgrade dari paket barunya sendiri". */
+      `INSERT INTO plan_upgrade_requests (tenant_id, requested_plan, previous_plan, billing_cycle, price, requested_by, order_id, payment_provider)
+       VALUES (:tenantId, :requestedPlan, :previousPlan, :billingCycle, :price, :requestedBy, :orderId, 'pakasir')
+       RETURNING id`,
+      { tenantId, requestedPlan, previousPlan: tenantRow.plan, billingCycle: finalCycle, price: lockedPrice, requestedBy: req.user.id, orderId }
+    );
+    requestId = result.insertId;
+
+    await logAudit({
+      userId: req.user.id, action: 'create', entityType: 'plan_upgrade_request', entityId: requestId,
+      newValues: { requestedPlan, billingCycle: finalCycle, price: lockedPrice, provider: 'pakasir' },
+    });
+  }
+
+  const gateway = getPaymentGateway('pakasir');
+  let checkout;
+  try {
+    checkout = await gateway.createCheckout({ invoiceNumber: orderId, amount: lockedPrice });
+  } catch (err) {
+    return res.status(502).json({ message: `Gagal membuat pembayaran: ${err.message}` });
+  }
+
+  await pool.query(
+    `UPDATE plan_upgrade_requests SET provider_transaction_id = :txnId WHERE id = :id`,
+    { txnId: checkout.providerTransactionId, id: requestId }
+  );
+
+  res.status(201).json({
+    id: requestId, requestedPlan, billingCycle: finalCycle, price: lockedPrice,
+    status: 'pending', downgradeWarning, checkoutUrl: checkout.checkoutUrl,
+  });
+});
+
+/**
+ * POST /api/billing/checkout/cancel — batalkan checkout Pakasir yang belum
+ * dibayar, supaya tenant bisa memilih paket lain. Admin-only, sama seperti
+ * requestPlanChange.
+ */
+const cancelPendingCheckout = asyncHandler(async (req, res) => {
+  const tenantId = req.user.tenant_id;
+  const [[request]] = await pool.query(
+    `SELECT id, provider_transaction_id AS "providerTransactionId" FROM plan_upgrade_requests
+     WHERE tenant_id = :tenantId AND status = 'pending' LIMIT 1`,
+    { tenantId }
+  );
+  if (!request) return res.status(404).json({ message: 'Tidak ada checkout yang menunggu pembayaran.' });
+
+  if (request.providerTransactionId) {
+    try {
+      await getPaymentGateway('pakasir').cancelTransaction({ providerTransactionId: request.providerTransactionId });
+    } catch (err) {
+      // Transaksi mungkin sudah kedaluwarsa/dibatalkan di sisi Pakasir --
+      // tidak menghalangi kita membatalkan catatan lokal kita sendiri.
+      console.error('Gagal membatalkan transaksi Pakasir (dilanjutkan tetap membatalkan lokal):', err.message);
+    }
+  }
+
+  await pool.query(`UPDATE plan_upgrade_requests SET status = 'canceled', reviewed_at = NOW() WHERE id = :id`, { id: request.id });
+  await logAudit({ userId: req.user.id, tenantId, action: 'update', entityType: 'plan_upgrade_request', entityId: request.id, newValues: { status: 'canceled' } });
+
+  res.json({ id: request.id, status: 'canceled' });
 });
 
 /**
  * POST /api/billing/cancel — batalkan langganan berbayar tenant yang sedang
- * login. Admin-only (sama seperti createUpgradeRequest — keputusan
- * finansial). TIDAK langsung menurunkan paket (lihat
- * subscriptionService.cancelActiveSubscription) — tenant tetap berhak pakai
- * paketnya sampai plan_expires_at yang sudah dibayar.
+ * login. Admin-only (sama seperti requestPlanChange — keputusan finansial).
+ * TIDAK langsung menurunkan paket (lihat subscriptionService.
+ * cancelActiveSubscription) — tenant tetap berhak pakai paketnya sampai
+ * plan_expires_at yang sudah dibayar.
  */
 const cancelSubscription = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenant_id;
@@ -294,117 +373,16 @@ const cancelSubscription = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET /api/billing/upgrade-requests — LINTAS TENANT, khusus admin platform
- * (requirePlatformAdmin, lihat routes/billingRoutes.js). `status` query
- * opsional ('pending' bawaan) — histori penuh bisa diminta dengan ?status=all.
- */
-const listUpgradeRequests = asyncHandler(async (req, res) => {
-  const statusFilter = req.query.status === 'all' ? null : (req.query.status || 'pending');
-
-  const [rows] = await pool.query(
-    `SELECT r.id, r.requested_plan AS "requestedPlan", r.previous_plan AS "previousPlan", r.billing_cycle AS "billingCycle",
-            r.price, r.currency, r.note, r.status, r.admin_note AS "adminNote",
-            r.created_at AS "createdAt", r.reviewed_at AS "reviewedAt",
-            t.id AS "tenantId", t.company_name AS "tenantName",
-            u.name AS "requesterName", u.email AS "requesterEmail"
-     FROM plan_upgrade_requests r
-     JOIN tenants t ON t.id = r.tenant_id
-     JOIN users u ON u.id = r.requested_by
-     ${statusFilter ? 'WHERE r.status = :statusFilter' : ''}
-     ORDER BY r.created_at DESC`,
-    statusFilter ? { statusFilter } : {}
-  );
-
-  res.json({ requests: rows });
-});
-
-/**
- * POST /api/billing/upgrade-requests/:id/approve
- * POST /api/billing/upgrade-requests/:id/reject — { adminNote? }
- * Keduanya khusus admin platform. Menyetujui memanggil
- * subscriptionService.activateSubscription — di sinilah verifikasi transfer
- * manual "berlaku": ditulis SEKALIGUS ke subscriptions (riwayat), invoices
- * (tagihan berstatus 'paid'), dan tenants.plan/plan_expires_at/billing_cycle
- * (cache state terkini). Masa aktif dihitung dari billing_cycle yang
- * DIAJUKAN tenant sendiri (30 hari 'monthly', 365 hari 'yearly') — Free
- * tidak pernah kedaluwarsa. Penegakan otomatis saat kedaluwarsa lihat
- * jobs/planExpiry.js.
- */
-function resolveUpgradeRequest(approve) {
-  return asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { adminNote } = req.body;
-
-    const [rows] = await pool.query(
-      `SELECT r.*, t.company_name AS "tenantName", u.email AS "requesterEmail"
-       FROM plan_upgrade_requests r
-       JOIN tenants t ON t.id = r.tenant_id
-       JOIN users u ON u.id = r.requested_by
-       WHERE r.id = :id LIMIT 1`,
-      { id }
-    );
-    const request = rows[0];
-    if (!request) return res.status(404).json({ message: 'Permintaan tidak ditemukan.' });
-    if (request.status !== 'pending') {
-      return res.status(409).json({ message: 'Permintaan ini sudah diproses sebelumnya.' });
-    }
-
-    const trimmedAdminNote = adminNote ? String(adminNote).trim().slice(0, 2000) : null;
-    const plan = getPlan(request.requested_plan);
-
-    if (approve) {
-      await activateSubscription({
-        tenantId: request.tenant_id,
-        planId: request.requested_plan,
-        billingCycle: request.billing_cycle,
-        createdBy: req.user.id,
-        provider: 'manual',
-        // Harga yang DIKUNCI saat tenant mengajukan (lihat createUpgradeRequest)
-        // -- request.price bisa NULL untuk permintaan lama dari sebelum kolom
-        // ini ada, activateSubscription() fallback ke harga katalog saat ini
-        // untuk kasus itu saja (lihat catatannya di subscriptionService.js).
-        priceOverride: request.price,
-      });
-    }
-
-    await pool.query(
-      `UPDATE plan_upgrade_requests SET status = :status, admin_note = :adminNote, reviewed_by = :reviewedBy, reviewed_at = NOW() WHERE id = :id`,
-      { status: approve ? 'approved' : 'rejected', adminNote: trimmedAdminNote, reviewedBy: req.user.id, id }
-    );
-
-    await logAudit({
-      userId: req.user.id, tenantId: request.tenant_id, action: 'update', entityType: 'plan_upgrade_request', entityId: Number(id),
-      newValues: { status: approve ? 'approved' : 'rejected', adminNote: trimmedAdminNote },
-    });
-
-    try {
-      await sendUpgradeRequestResolved({
-        to: request.requesterEmail,
-        planName: plan?.name || request.requested_plan,
-        approved: approve,
-        adminNote: trimmedAdminNote,
-        tenantId: request.tenant_id,
-      });
-    } catch (err) {
-      console.error('Gagal mengirim surel keputusan permintaan upgrade:', err.message);
-    }
-
-    res.json({ id: Number(id), status: approve ? 'approved' : 'rejected' });
-  });
-}
-
-/**
  * POST /api/billing/webhooks/pakasir — TANPA AUTH (dipanggil server Pakasir
  * sendiri, bukan pengguna kita; lihat routes/billingRoutes.js -- didaftarkan
  * SEBELUM router.use(authenticate)). Otentikasinya lewat header X-Secret,
  * diverifikasi di dalam PakasirProvider.handleWebhook, BUKAN token JWT.
  *
- * Endpoint ini men-SINKRON-kan status invoice yang invoice_number-nya cocok
- * dengan order_id dari webhook -- ia TIDAK mengaktifkan subscription baru
- * sendiri. Belum ada alur checkout self-serve yang membuat invoice pending
- * lewat Pakasir dulu (lihat catatan di services/paymentGateway/
- * PakasirProvider.js): endpoint ini infrastruktur penerimanya, siap dipakai
- * begitu alur pembuatan invoice pending itu ditambahkan.
+ * Mencocokkan order_id webhook ke plan_upgrade_requests.order_id (dibuat di
+ * requestPlanChange) — begitu lunas, memanggil activateSubscription dengan
+ * harga yang DIKUNCI saat checkout dibuat, lalu menandai permintaan 'paid'.
+ * Idempotent: permintaan yang statusnya BUKAN 'pending' lagi (webhook
+ * dobel, atau sudah dibatalkan tenant) diabaikan dengan aman.
  */
 const handlePakasirWebhook = asyncHandler(async (req, res) => {
   const provider = getPaymentGateway('pakasir');
@@ -416,40 +394,76 @@ const handlePakasirWebhook = asyncHandler(async (req, res) => {
     return res.status(err.status || 400).json({ message: err.message });
   }
 
-  const [[invoice]] = await pool.query(
-    `SELECT id, tenant_id, status FROM invoices WHERE invoice_number = :orderId`,
+  const [[request]] = await pool.query(
+    `SELECT r.id, r.tenant_id AS "tenantId", r.requested_plan AS "requestedPlan", r.billing_cycle AS "billingCycle",
+            r.price, r.status, r.requested_by AS "requestedBy", u.email AS "requesterEmail"
+     FROM plan_upgrade_requests r
+     JOIN users u ON u.id = r.requested_by
+     WHERE r.order_id = :orderId`,
     { orderId: result.orderId }
   );
-  if (!invoice) {
-    // Webhook terverifikasi asli, tapi tidak ada invoice kita yang cocok --
-    // balas 200 supaya Pakasir tidak menganggapnya gagal & mengulang terus;
-    // dicatat di log server untuk ditelusuri manual.
-    console.error(`Webhook Pakasir: order_id "${result.orderId}" tidak cocok dengan invoice mana pun.`);
-    return res.status(200).json({ message: 'Diterima, tidak ada invoice yang cocok.' });
+  if (!request) {
+    // Webhook terverifikasi asli, tapi tidak ada permintaan kita yang cocok
+    // -- balas 200 supaya Pakasir tidak menganggapnya gagal & mengulang
+    // terus; dicatat di log server untuk ditelusuri manual.
+    console.error(`Webhook Pakasir: order_id "${result.orderId}" tidak cocok dengan permintaan mana pun.`);
+    return res.status(200).json({ message: 'Diterima, tidak ada permintaan yang cocok.' });
   }
-  if (invoice.status === 'paid') {
-    return res.status(200).json({ message: 'Invoice sudah lunas sebelumnya, diabaikan.' });
+  if (request.status !== 'pending') {
+    return res.status(200).json({ message: 'Permintaan ini sudah diproses sebelumnya.' });
   }
 
+  if (result.status === 'canceled') {
+    await pool.query(
+      `UPDATE plan_upgrade_requests SET status = 'canceled', provider_transaction_id = :txnId, reviewed_at = NOW() WHERE id = :id`,
+      { id: request.id, txnId: result.providerTransactionId }
+    );
+    return res.status(200).json({ message: 'Transaksi dibatalkan/kedaluwarsa, permintaan ditutup.' });
+  }
+  if (result.status !== 'paid') {
+    // Selain 'completed'/'canceled', dokumentasi Pakasir tidak menyebut
+    // status lain untuk webhook -- biarkan permintaan tetap 'pending', masih
+    // bisa lunas belakangan.
+    return res.status(200).json({ message: `Status transaksi: ${result.status}.` });
+  }
+
+  await activateSubscription({
+    tenantId: request.tenantId,
+    planId: request.requestedPlan,
+    billingCycle: request.billingCycle,
+    createdBy: request.requestedBy,
+    provider: 'pakasir',
+    // Harga yang DIKUNCI saat tenant membuat checkout (lihat
+    // requestPlanChange) -- BUKAN harga katalog saat ini, supaya perubahan
+    // harga di menu Katalog Paket SELAGI tenant belum sempat membayar tidak
+    // diam-diam mengubah jumlah yang sudah dia bayar ke Pakasir.
+    priceOverride: request.price,
+    providerTransactionId: result.providerTransactionId,
+  });
+
   await pool.query(
-    `UPDATE invoices
-     SET status = :status, provider = 'pakasir', provider_transaction_id = :txnId,
-         payment_method = 'pakasir', paid_at = :paidAt, updated_at = NOW()
-     WHERE id = :id`,
-    {
-      id: invoice.id,
-      status: result.status,
-      txnId: result.providerTransactionId,
-      paidAt: result.status === 'paid' ? (result.completedAt || new Date()) : null,
-    }
+    `UPDATE plan_upgrade_requests SET status = 'paid', provider_transaction_id = :txnId, paid_at = :paidAt, reviewed_at = NOW() WHERE id = :id`,
+    { id: request.id, txnId: result.providerTransactionId, paidAt: result.completedAt || new Date() }
   );
 
   await logAudit({
-    userId: null, tenantId: invoice.tenant_id, action: 'update', entityType: 'invoice', entityId: invoice.id,
-    newValues: { status: result.status, provider: 'pakasir', providerTransactionId: result.providerTransactionId },
+    userId: null, tenantId: request.tenantId, action: 'update', entityType: 'plan_upgrade_request', entityId: request.id,
+    newValues: { status: 'paid', provider: 'pakasir', providerTransactionId: result.providerTransactionId },
   });
 
-  res.status(200).json({ message: 'Webhook diproses.' });
+  try {
+    await sendUpgradeRequestResolved({
+      to: request.requesterEmail,
+      planName: getPlan(request.requestedPlan)?.name || request.requestedPlan,
+      approved: true,
+      adminNote: null,
+      tenantId: request.tenantId,
+    });
+  } catch (err) {
+    console.error('Gagal mengirim surel konfirmasi pembayaran:', err.message);
+  }
+
+  res.status(200).json({ message: 'Pembayaran dikonfirmasi, paket diperbarui.' });
 });
 
 module.exports = {
@@ -457,10 +471,8 @@ module.exports = {
   getMyBilling,
   listInvoices,
   getInvoice,
-  createUpgradeRequest,
+  requestPlanChange,
+  cancelPendingCheckout,
   cancelSubscription,
-  listUpgradeRequests,
-  approveUpgradeRequest: resolveUpgradeRequest(true),
-  rejectUpgradeRequest: resolveUpgradeRequest(false),
   handlePakasirWebhook,
 };

@@ -21,7 +21,7 @@ const FAQ = [
   },
   {
     q: 'Bagaimana cara pembayarannya?',
-    a: 'Saat ini lewat transfer manual: ajukan paket yang diinginkan, ikuti instruksi transfer yang muncul, dan tim kami mengaktifkannya begitu pembayaran terverifikasi.',
+    a: 'Lewat Pakasir: pilih paket yang diinginkan, bayar dengan QRIS, transfer bank, atau metode lain yang tersedia, dan paket Anda aktif otomatis begitu pembayaran dikonfirmasi.',
   },
   {
     q: 'Apa yang terjadi kalau aset/pengguna melebihi batas paket?',

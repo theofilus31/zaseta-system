@@ -101,7 +101,7 @@ function getSelfServePlanIds() {
 }
 
 /** Urutan "tingkatan" paket (kolom `sort_order`) — dipakai membedakan
- *  upgrade vs downgrade (lihat billingController.createUpgradeRequest) tanpa
+ *  upgrade vs downgrade (lihat billingController.requestPlanChange) tanpa
  *  membandingkan harga mentah. Dicari dari SELURUH paket (termasuk yang
  *  nonaktif) supaya tenant lama di paket yang sudah dipensiunkan tetap bisa
  *  dibandingkan tingkatannya dengan benar. */

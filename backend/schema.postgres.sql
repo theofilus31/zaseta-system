@@ -737,12 +737,22 @@ CREATE TABLE plan_upgrade_requests (
                                             -- mengajukan tidak diam-diam mengubah jumlah yang ditagihkan.
     currency        VARCHAR(3) NOT NULL DEFAULT 'IDR',
     note            TEXT NULL,
+    -- 'paid' (dikonfirmasi webhook Pakasir) & 'applied' (paket Free, tanpa
+    -- biaya) menggantikan 'approved' untuk baris BARU -- lihat
+    -- migration_pakasir_self_serve_billing.sql. 'approved'/'rejected'
+    -- dipertahankan hanya supaya baris LAMA (alur verifikasi manual sebelum
+    -- migrasi itu) tetap valid dibaca.
     status          VARCHAR(20) NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending','approved','rejected')),
+                        CHECK (status IN ('pending','approved','rejected','paid','applied','canceled')),
     requested_by    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reviewed_by     BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMP NULL,
     admin_note      TEXT NULL,
+    -- Lihat migration_pakasir_self_serve_billing.sql.
+    payment_provider          VARCHAR(20) NOT NULL DEFAULT 'pakasir',
+    order_id                  VARCHAR(60) NULL UNIQUE,   -- order_id yang dikirim ke Pakasir create-transaction
+    provider_transaction_id   VARCHAR(150) NULL,          -- txn_id dari Pakasir
+    paid_at                   TIMESTAMP NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

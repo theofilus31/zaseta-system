@@ -3,24 +3,23 @@
  *  ANTARMUKA PROVIDER PEMBAYARAN (fondasi payment gateway production-ready)
  * ============================================================================
  *  Kelas dasar murni sebagai KONTRAK, bukan implementasi. Setiap provider
- *  (ManualTransferProvider sekarang, MidtransProvider/XenditProvider nanti)
- *  meng-extend ini dan mengisi kelima method-nya sendiri — subscriptionService
- *  & billingController HANYA bicara lewat kontrak ini (via getPaymentGateway
- *  di index.js), tidak pernah memanggil SDK provider tertentu secara
- *  langsung. Supaya ganti/tambah provider nanti tidak menyentuh business
- *  logic billing sama sekali.
+ *  (PakasirProvider sekarang, MidtransProvider/XenditProvider nanti)
+ *  meng-extend ini dan mengisi kelima method-nya sendiri — billingController
+ *  HANYA bicara lewat kontrak ini (via getPaymentGateway di index.js), tidak
+ *  pernah memanggil SDK provider tertentu secara langsung. Supaya ganti/
+ *  tambah provider nanti tidak menyentuh business logic billing sama sekali.
  * ============================================================================
  */
 class PaymentGatewayInterface {
-  /** Mulai proses pembayaran satu invoice — provider gateway sungguhan
-   *  mengembalikan { checkoutUrl }, provider manual mengembalikan instruksi
-   *  transfer (tidak ada redirect ke luar). */
+  /** Mulai proses pembayaran satu invoice/transaksi — mengembalikan minimal
+   *  { checkoutUrl } untuk diarahkan (redirect) ke halaman pembayaran hosted
+   *  milik provider. */
   async createCheckout(_params) {
     throw new Error(`${this.constructor.name} belum mengimplementasikan createCheckout()`);
   }
 
-  /** Status pembayaran satu invoice, dibaca dari sumber kebenaran provider
-   *  itu sendiri (API gateway sungguhan) atau tabel invoices (manual). */
+  /** Status pembayaran, dibaca dari sumber kebenaran provider itu sendiri
+   *  (API gateway sungguhan), bukan cuma dari tabel lokal kita. */
   async getPaymentStatus(_params) {
     throw new Error(`${this.constructor.name} belum mengimplementasikan getPaymentStatus()`);
   }

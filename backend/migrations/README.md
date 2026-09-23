@@ -35,4 +35,5 @@ migration yang relevan sesuai urutan tanggal di bawah:
 | 22 | `migration_add_token_version.sql` | Tambah kolom `token_version` di users — mencabut token JWT lama seketika saat kata sandi diganti |
 | 23 | `migration_add_password_is_set.sql` | Tambah kolom `password_is_set` di users — akun daftar via Google boleh membuat kata sandi di Profil tanpa kata sandi lama |
 | 24 | `migration_remove_zecode_permission.sql` | Bersihkan baris izin modul 'zecode' (Zecode AI diganti chatbot panduan statis); tabel riwayat obrolan lama tidak dihapus |
+| 25 | `migration_pakasir_self_serve_billing.sql` | Tambah kolom transaksi Pakasir di `plan_upgrade_requests` (`payment_provider`, `order_id`, `provider_transaction_id`, `paid_at`) & lebarkan status; upgrade paket berbayar kini dibayar & dikonfirmasi otomatis lewat Pakasir, bukan lagi transfer manual + verifikasi admin |
 | — | `migration_purge_test_data.sql` | **Opsional & destruktif** — bersih-bersih data uji coba spesifik (bukan bagian dari urutan wajib, baca catatan di dalam filenya sebelum dijalankan) |

@@ -110,8 +110,10 @@ const getStats = asyncHandler(async (req, res) => {
      ORDER BY d.day ASC`
   );
 
-  // CATATAN AKURASI: hanya menangkap tenant yang naik paket lewat alur
-  // pengajuan upgrade mandiri (plan_upgrade_requests berstatus approved).
+  // CATATAN AKURASI: hanya menangkap tenant yang naik paket lewat checkout
+  // self-serve (plan_upgrade_requests berstatus 'paid' -- dibayar lewat
+  // Pakasir; 'approved' dipertahankan di filter untuk baris LAMA dari alur
+  // verifikasi manual sebelum migration_pakasir_self_serve_billing.sql).
   // Koreksi paket manual oleh admin platform (lihat updateTenantPlan di
   // bawah) TIDAK tercatat di sini karena tidak ada tabel riwayat paket —
   // jadi grafik ini adalah PENDEKATAN, titik terakhirnya bisa sedikit lebih
@@ -119,7 +121,7 @@ const getStats = asyncHandler(async (req, res) => {
   const [subscriberGrowth] = await pool.query(
     `SELECT d.day::date::text AS date,
             (SELECT COUNT(DISTINCT pur.tenant_id) FROM plan_upgrade_requests pur
-             WHERE pur.status = 'approved' AND pur.reviewed_at::date <= d.day) AS value
+             WHERE pur.status IN ('paid', 'approved') AND pur.reviewed_at::date <= d.day) AS value
      FROM generate_series((CURRENT_DATE - INTERVAL '${growthDays - 1} days')::date, CURRENT_DATE, '1 day') AS d(day)
      ORDER BY d.day ASC`
   );
@@ -154,8 +156,9 @@ const getStats = asyncHandler(async (req, res) => {
 // GET /api/platform/revenue?days=7|30|90 — dipakai halaman "Langganan &
 // Pendapatan". BEDA dari getStats.estimatedMrr (perkiraan katalog): di sini
 // `revenueAllTime`/`revenueGrowth` diambil dari tabel `invoices` yang sungguhan
-// dibuat activateSubscription() saat admin menyetujui upgrade (lihat
-// subscriptionService.js) — jadi angka pendapatan riil, bukan proyeksi.
+// dibuat activateSubscription() saat pembayaran Pakasir dikonfirmasi lunas
+// (lihat billingController.handlePakasirWebhook) — jadi angka pendapatan
+// riil, bukan proyeksi.
 // `estimatedMrr`/`planBreakdown` tetap proyeksi katalog (harga x jumlah
 // tenant AKTIF sekarang di paket itu) karena tenant bisa downgrade/upgrade
 // kapan saja — pendapatan BULAN DEPAN memang cuma bisa diperkirakan, bukan
@@ -194,14 +197,16 @@ const getRevenue = asyncHandler(async (req, res) => {
      ORDER BY d.day ASC`
   );
 
-  // Pratinjau ringkas — riwayat LENGKAP (dengan aksi setuju/tolak) tetap di
-  // halaman Permintaan Upgrade (tab "Semua"), jangan diduplikasi di sini.
+  // Pratinjau ringkas ganti paket terakhir (lunas via Pakasir, dibatalkan,
+  // atau diterapkan langsung karena paket Free) -- 'approved'/'rejected'
+  // ikut disertakan supaya baris LAMA dari alur verifikasi manual (sebelum
+  // migration_pakasir_self_serve_billing.sql) tetap muncul di riwayat.
   const [recentConversions] = await pool.query(
     `SELECT r.id, r.requested_plan AS "requestedPlan", r.previous_plan AS "previousPlan",
             r.status, r.reviewed_at AS "reviewedAt", t.company_name AS "tenantName"
      FROM plan_upgrade_requests r
      JOIN tenants t ON t.id = r.tenant_id
-     WHERE r.status IN ('approved', 'rejected')
+     WHERE r.status IN ('paid', 'applied', 'canceled', 'approved', 'rejected')
      ORDER BY r.reviewed_at DESC
      LIMIT 6`
   );

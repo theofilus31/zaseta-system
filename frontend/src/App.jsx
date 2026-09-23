@@ -40,7 +40,6 @@ import ConsumablePublicScanPage from './pages/ConsumablePublicScanPage.jsx';
 import PublicRequestPage from './pages/PublicRequestPage.jsx';
 import BillingPage from './pages/BillingPage.jsx';
 import InvoicePrintPage from './pages/InvoicePrintPage.jsx';
-import PlatformBillingRequests from './pages/PlatformBillingRequests.jsx';
 import PlatformDashboard from './pages/PlatformDashboard.jsx';
 import PlatformTenants from './pages/PlatformTenants.jsx';
 import PlatformAdmins from './pages/PlatformAdmins.jsx';
@@ -173,7 +172,6 @@ export default function App() {
           dipindah ke sistem tab ala Chrome di atas. */}
       <Route path="/platform/dashboard" element={<ProtectedRoute platform><PlatformDashboard /></ProtectedRoute>} />
       <Route path="/platform/tenants" element={<ProtectedRoute platform><PlatformTenants /></ProtectedRoute>} />
-      <Route path="/platform/billing-requests" element={<ProtectedRoute platform><PlatformBillingRequests /></ProtectedRoute>} />
       <Route path="/platform/admins" element={<ProtectedRoute platform><PlatformAdmins /></ProtectedRoute>} />
       <Route path="/platform/ip-whitelist" element={<ProtectedRoute platform><PlatformIpWhitelist /></ProtectedRoute>} />
       <Route path="/platform/account" element={<ProtectedRoute platform><PlatformAccount /></ProtectedRoute>} />

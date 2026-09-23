@@ -5,19 +5,24 @@ const PaymentGatewayInterface = require('./PaymentGatewayInterface');
  * ============================================================================
  *  PROVIDER — PAKASIR (API v2, https://pakasir.com/p/docs)
  * ============================================================================
- *  Payment gateway sungguhan pertama untuk billing (sebelumnya cuma
- *  ManualTransferProvider). Metode bawaan 'payment_link' -- Pakasir
- *  menghasilkan satu halaman checkout hosted yang mendukung QRIS & VA
- *  sekaligus, jadi tenant tidak perlu memilih metode di sisi kita.
+ *  Satu-satunya payment gateway aktif untuk billing (lihat
+ *  billingController.requestPlanChange/handlePakasirWebhook — upgrade paket
+ *  berbayar dibayar & dikonfirmasi lewat provider ini, tidak ada lagi jalur
+ *  transfer manual). Metode bawaan 'payment_link' -- Pakasir menghasilkan
+ *  satu halaman checkout hosted yang mendukung QRIS & VA sekaligus, jadi
+ *  tenant tidak perlu memilih metode di sisi kita.
  *
- *  Kontrak dengan pemanggil (services/subscriptionService.js dkk.):
- *  - `invoiceNumber` dipakai APA ADANYA sebagai `order_id` Pakasir. API
- *    Pakasir bersifat "find or create": memanggil create-transaction dengan
- *    order_id yang sama & parameter identik mengembalikan transaksi yang
- *    sama, jadi retry di sisi kita aman tanpa membuat transaksi dobel.
- *  - `txn_id` yang dikembalikan Pakasir disimpan pemanggil ke
- *    invoices.provider_transaction_id -- getPaymentStatus() & webhook
- *    verification BUTUH nilai ini untuk cross-check ke API status.
+ *  Kontrak dengan pemanggil:
+ *  - `invoiceNumber` dipakai APA ADANYA sebagai `order_id` Pakasir — di
+ *    billingController ini adalah plan_upgrade_requests.order_id, BUKAN
+ *    invoices.invoice_number (nomor akuntansi kita sendiri, baru dibuat
+ *    setelah lunas). API Pakasir bersifat "find or create": memanggil
+ *    create-transaction dengan order_id yang sama & parameter identik
+ *    mengembalikan transaksi yang sama, jadi retry di sisi kita aman tanpa
+ *    membuat transaksi dobel.
+ *  - `txn_id` yang dikembalikan Pakasir disimpan pemanggil sendiri (kolom
+ *    provider_transaction_id) -- getPaymentStatus() & webhook verification
+ *    BUTUH nilai ini untuk cross-check ke API status.
  *
  *  KEAMANAN WEBHOOK: dokumentasi Pakasir sendiri TIDAK memakai signature
  *  kriptografis, cuma header `X-Secret` yang dicocokkan APA ADANYA, dan
@@ -135,8 +140,7 @@ class PakasirProvider extends PaymentGatewayInterface {
   }
 
   // Pakasir tidak punya recurring billing di sisi provider -- pencatatan
-  // subscription internal selalu lewat subscriptionService.js, sama seperti
-  // ManualTransferProvider (lihat catatan method ini di sana).
+  // subscription internal selalu lewat subscriptionService.js, bukan di sini.
   async createSubscription(params) {
     return { provider: 'pakasir', externalSubscriptionId: null, ...params };
   }

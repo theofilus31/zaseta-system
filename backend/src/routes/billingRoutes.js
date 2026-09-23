@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/billingController');
-const { authenticate, requirePermission, requireRole, requirePlatformAdmin } = require('../middleware/auth');
+const { authenticate, requirePermission, requireRole } = require('../middleware/auth');
 const { publicReadLimiter } = require('../middleware/publicLimiter');
 
 // Katalog paket — publik, dipakai halaman Harga & Landing sebelum login.
@@ -24,15 +24,11 @@ router.get('/me', requirePermission('billing', 'view'), ctrl.getMyBilling);
 router.get('/invoices', requirePermission('billing', 'view'), ctrl.listInvoices);
 router.get('/invoices/:id', requirePermission('billing', 'view'), ctrl.getInvoice);
 
-// Mengajukan upgrade/downgrade & membatalkan langganan adalah keputusan
-// finansial/kontraktual — sengaja dijaga requireRole('admin'), bukan matriks
-// izin per-menu (lihat komentar di billingController.createUpgradeRequest).
-router.post('/upgrade-requests', requirePermission('billing', 'view'), requireRole('admin'), ctrl.createUpgradeRequest);
+// Mengganti paket, membatalkan checkout, & membatalkan langganan adalah
+// keputusan finansial/kontraktual — sengaja dijaga requireRole('admin'),
+// bukan matriks izin per-menu (lihat komentar di billingController.requestPlanChange).
+router.post('/checkout', requirePermission('billing', 'view'), requireRole('admin'), ctrl.requestPlanChange);
+router.post('/checkout/cancel', requirePermission('billing', 'view'), requireRole('admin'), ctrl.cancelPendingCheckout);
 router.post('/cancel', requirePermission('billing', 'view'), requireRole('admin'), ctrl.cancelSubscription);
-
-// Lintas tenant — khusus admin platform (lihat migration_billing_phase4.sql).
-router.get('/upgrade-requests', requirePlatformAdmin, ctrl.listUpgradeRequests);
-router.post('/upgrade-requests/:id/approve', requirePlatformAdmin, ctrl.approveUpgradeRequest);
-router.post('/upgrade-requests/:id/reject', requirePlatformAdmin, ctrl.rejectUpgradeRequest);
 
 module.exports = router;

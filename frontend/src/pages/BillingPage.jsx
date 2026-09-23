@@ -11,7 +11,7 @@ import Modal from '../components/ui/Modal.jsx';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { Skeleton } from '../components/ui/Skeleton.jsx';
 import { Badge } from '../components/ui/StatusBadge.jsx';
-import { TextareaField, FormError } from '../components/ui/Form.jsx';
+import { FormError } from '../components/ui/Form.jsx';
 import { SegmentedControl } from '../components/ui/Button.jsx';
 
 const CYCLE_OPTIONS = [
@@ -133,10 +133,11 @@ export default function BillingPage() {
   const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [picked, setPicked] = useState(null); // paket yang sedang diajukan lewat modal
-  const [note, setNote] = useState('');
+  const [picked, setPicked] = useState(null); // paket yang sedang dipilih lewat modal
   const [submitting, setSubmitting] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [cancelingCheckout, setCancelingCheckout] = useState(false);
+  const [resumingCheckout, setResumingCheckout] = useState(false);
   const [error, setError] = useState('');
   // Siklus tagihan yang sedang dipilih di panel perbandingan & modal
   // pengajuan — bawaan dari ?cycle= kalau datang dari section Harga
@@ -161,6 +162,22 @@ export default function BillingPage() {
   }
 
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Pembayaran Pakasir selesai di TAB/HALAMAN LAIN (redirect penuh ke
+     app.pakasir.com, bukan popup) — begitu tenant kembali ke tab ini
+     (kembali lewat tombol back, atau membuka lagi dari riwayat), muat ulang
+     supaya status "menunggu pembayaran" langsung terganti begitu webhook
+     Pakasir sempat memprosesnya di sisi server SELAGI tenant masih di
+     halaman pembayaran. Tanpa ini tenant harus me-refresh manual. */
+  useEffect(() => {
+    function onFocus() { load(); }
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Datang dari section Harga → Daftar (?upgrade=business): buka langsung
   // modal pengajuan pembayaran paket itu, tanpa pengguna harus memilih lagi.
@@ -200,20 +217,58 @@ export default function BillingPage() {
     pushSuccess(`Selamat! Paket ${data.plan.name} Anda sudah aktif.`);
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSubmitRequest(e) {
+  /** Paket berbayar: buat checkout Pakasir lalu ARAHKAN LANGSUNG ke halaman
+   *  pembayarannya (redirect penuh, bukan tab baru — supaya tombol "kembali"
+   *  bawaan Pakasir wajar dipakai). Paket gratis: diterapkan seketika, tidak
+   *  ada redirect sama sekali. */
+  async function handleCheckout(e) {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
-      await axiosClient.post('/billing/upgrade-requests', { requestedPlan: picked.id, billingCycle: cycle, note: note.trim() || undefined });
-      pushSuccess('Permintaan upgrade terkirim. Admin kami akan memverifikasi transfer Anda.');
+      const res = await axiosClient.post('/billing/checkout', { requestedPlan: picked.id, billingCycle: cycle });
+      if (res.data.checkoutUrl) {
+        window.location.href = res.data.checkoutUrl;
+        return; // biarkan submitting=true -- halaman akan berpindah
+      }
+      pushSuccess(`Paket ${picked.name} diterapkan.`);
       setPicked(null);
-      setNote('');
       load();
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal mengajukan upgrade.');
-    } finally {
+      setError(err.response?.data?.message || 'Gagal memproses permintaan.');
       setSubmitting(false);
+    }
+  }
+
+  /** Tenant sempat meninggalkan halaman pembayaran Pakasir tanpa membayar —
+   *  minta ulang checkoutUrl untuk permintaan pending yang SAMA (idempotent
+   *  di sisi Pakasir, lihat billingController.requestPlanChange) lalu
+   *  arahkan lagi ke sana. */
+  async function handleResumeCheckout() {
+    setResumingCheckout(true);
+    try {
+      const res = await axiosClient.post('/billing/checkout', {
+        requestedPlan: data.pendingRequest.requestedPlan,
+        billingCycle: data.pendingRequest.billingCycle,
+      });
+      if (res.data.checkoutUrl) window.location.href = res.data.checkoutUrl;
+    } catch (err) {
+      pushError(err.response?.data?.message || 'Gagal melanjutkan pembayaran.');
+      setResumingCheckout(false);
+    }
+  }
+
+  async function handleCancelCheckout() {
+    if (!confirm('Batalkan checkout yang sedang menunggu pembayaran ini?')) return;
+    setCancelingCheckout(true);
+    try {
+      await axiosClient.post('/billing/checkout/cancel');
+      pushSuccess('Checkout dibatalkan.');
+      load();
+    } catch (err) {
+      pushError(err.response?.data?.message || 'Gagal membatalkan checkout.');
+    } finally {
+      setCancelingCheckout(false);
     }
   }
 
@@ -309,14 +364,19 @@ export default function BillingPage() {
         </div>
 
         {data.pendingRequest && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3.5">
+          <div className="mb-5 flex flex-wrap items-start gap-3 rounded-2xl border border-warning-200 bg-warning-50 px-4 py-3.5">
             <i className="fas fa-clock mt-0.5 text-warning-500 shrink-0" aria-hidden="true" />
-            <p className="text-sm text-warning-800 leading-relaxed">
-              Permintaan upgrade ke paket <strong>{plans.find((p) => p.id === data.pendingRequest.requestedPlan)?.name || data.pendingRequest.requestedPlan}</strong>
-              {' '}({data.pendingRequest.billingCycle === 'yearly' ? 'tahunan' : 'bulanan'}) sedang menunggu verifikasi admin kami.
-              {' '}Harga yang akan ditagihkan sudah dikunci di <strong>{rupiah(data.pendingRequest.price)}</strong> —
-              tidak berubah walau harga paket ini diubah sebelum disetujui.
+            <p className="flex-1 min-w-[16rem] text-sm text-warning-800 leading-relaxed">
+              Checkout ke paket <strong>{plans.find((p) => p.id === data.pendingRequest.requestedPlan)?.name || data.pendingRequest.requestedPlan}</strong>
+              {' '}({data.pendingRequest.billingCycle === 'yearly' ? 'tahunan' : 'bulanan'}) sedang menunggu pembayaran Anda.
+              {' '}Harga sudah dikunci di <strong>{rupiah(data.pendingRequest.price)}</strong> — tidak berubah walau harga paket ini diubah sebelum Anda membayar.
             </p>
+            {isAdmin && (
+              <div className="flex shrink-0 gap-2">
+                <Button size="xs" onClick={handleResumeCheckout} loading={resumingCheckout}>Lanjutkan Pembayaran</Button>
+                <Button size="xs" variant="ghost" onClick={handleCancelCheckout} loading={cancelingCheckout}>Batalkan</Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -358,7 +418,7 @@ export default function BillingPage() {
         <CardHeader
           bordered
           title="Semua Paket"
-          description="Ajukan upgrade kapan saja — aktif setelah transfer diverifikasi admin kami."
+          description="Ganti paket kapan saja — paket berbayar aktif otomatis begitu pembayaran lewat Pakasir dikonfirmasi."
         />
         <div className="px-5 sm:px-6 pt-5 flex justify-center sm:justify-start">
           <SegmentedControl options={CYCLE_OPTIONS} value={cycle} onChange={setCycle} size="sm" />
@@ -415,10 +475,10 @@ export default function BillingPage() {
 
       {picked && (
         <Modal
-          title={`Ajukan Upgrade ke ${picked.name}`}
+          title={`Pindah ke Paket ${picked.name}`}
           description={
             picked.price === 0 ? (
-              'Paket gratis — tidak perlu transfer.'
+              'Paket gratis — diterapkan langsung, tanpa pembayaran.'
             ) : (
               <span className="inline-flex items-baseline gap-1">
                 <span>Rp</span>
@@ -432,32 +492,29 @@ export default function BillingPage() {
           footer={
             <>
               <Button variant="secondary" size="sm" onClick={() => setPicked(null)} disabled={submitting}>Batal</Button>
-              <Button size="sm" onClick={handleSubmitRequest} loading={submitting}>
-                {submitting ? 'Mengirim…' : 'Ajukan Upgrade'}
+              <Button size="sm" onClick={handleCheckout} loading={submitting}>
+                {submitting
+                  ? (picked.price > 0 ? 'Mengarahkan…' : 'Menerapkan…')
+                  : (picked.price > 0 ? 'Lanjut ke Pembayaran' : 'Terapkan Sekarang')}
               </Button>
             </>
           }
         >
-          <form onSubmit={handleSubmitRequest} className="space-y-4">
+          <form onSubmit={handleCheckout} className="space-y-4">
             {picked.price > 0 && (
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wide text-ink-500 mb-1.5">Siklus Tagihan</p>
                 <SegmentedControl options={CYCLE_OPTIONS} value={cycle} onChange={setCycle} size="sm" />
               </div>
             )}
-            {picked.price > 0 && data.transferInfo && (
-              <div className="rounded-xl border border-dashed border-ink-300 bg-ink-50 px-4 py-3.5">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-ink-500 mb-1.5">Cara Pembayaran</p>
-                <p className="text-[13px] text-ink-700 leading-relaxed">{data.transferInfo}</p>
+            {picked.price > 0 && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-ink-300 bg-ink-50 px-4 py-3.5">
+                <i className="fas fa-shield-halved mt-0.5 text-ink-400 shrink-0" aria-hidden="true" />
+                <p className="text-[13px] text-ink-700 leading-relaxed">
+                  Anda akan diarahkan ke halaman pembayaran Pakasir (QRIS, transfer bank, dan metode lainnya). Paket aktif otomatis begitu pembayaran dikonfirmasi.
+                </p>
               </div>
             )}
-            <TextareaField
-              label="Catatan (opsional)"
-              rows={3}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Mis. nomor referensi transfer, atau pertanyaan lain."
-            />
             <FormError>{error}</FormError>
           </form>
         </Modal>

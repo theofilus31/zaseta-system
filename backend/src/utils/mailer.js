@@ -348,9 +348,9 @@ async function sendNewUserWelcome({ to, name, username, password, loginUrl, tena
  * sudah tertutup.
  *
  * Identitas pengirim SENGAJA "ZASETA" tetap (bukan getBranding() milik
- * tenant ini) — sama seperti sendUpgradeRequestNotification/sendContactMessage
- * (surel level PLATFORM) — karena tenant yang baru saja dibuat ini belum
- * tentu punya merek sendiri yang dikonfigurasi.
+ * tenant ini) — sama seperti sendContactMessage (surel level PLATFORM) —
+ * karena tenant yang baru saja dibuat ini belum tentu punya merek sendiri
+ * yang dikonfigurasi.
  */
 async function sendTenantWelcome({ to, name, companyName, username, loginUrl }) {
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -484,53 +484,12 @@ async function sendNotificationDigest({ to, userName, items, tenantId }) {
 }
 
 /**
- * Beritahu admin platform (users.is_platform_admin=1, lihat migration_billing_
- * phase4.sql) ada permintaan upgrade paket baru yang menunggu verifikasi
- * transfer manual. `to` boleh diisi alamat surel lebih dari satu (dipisah
- * koma) — nodemailer menerimanya langsung.
- */
-async function sendUpgradeRequestNotification({ to, tenantName, requesterName, requesterEmail, planName, note, reviewUrl }) {
-  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
-  const signature = { appName: 'ZASETA', text: 'ZASETA' };
-
-  const bodyHtml = `
-    <p style="${FONT} margin: 0 0 4px; font-size: 16px; font-weight: 700; color: ${INK_900};">Permintaan Upgrade Paket Baru</p>
-    <p style="${FONT} margin: 0 0 24px; font-size: 14px; color: ${INK_600}; line-height: 1.6;">
-      <strong>${escapeHtml(tenantName)}</strong> mengajukan upgrade ke paket <strong>${escapeHtml(planName)}</strong>. Verifikasi transfernya lalu setujui/tolak lewat tautan di bawah.
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px;">
-      <tr><td style="background: ${INK_50}; border: 1px dashed ${BORDER}; border-radius: 10px; padding: 20px 24px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Diajukan Oleh</td></tr>
-          <tr><td style="${FONT} font-size: 14px; color: ${INK_900}; padding-bottom: 14px;">${escapeHtml(requesterName)} &lt;${escapeHtml(requesterEmail)}&gt;</td></tr>
-          ${note ? `
-          <tr><td style="${FONT} font-size: 11px; font-weight: 700; color: ${INK_600}; text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 3px;">Catatan</td></tr>
-          <tr><td style="${FONT} font-size: 14px; color: ${INK_900};">${escapeHtml(note)}</td></tr>
-          ` : ''}
-        </table>
-      </td></tr>
-    </table>
-
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 8px auto 0;">
-      <tr><td style="background: ${BRAND}; border-radius: 8px;">
-        <a href="${reviewUrl}" style="${FONT} display: inline-block; padding: 12px 28px; font-size: 14px; font-weight: 700; color: ${WHITE}; text-decoration: none;">Tinjau Permintaan &rarr;</a>
-      </td></tr>
-    </table>
-  `;
-
-  await getTransporter().sendMail({
-    from: fromAddress,
-    to,
-    subject: `[Billing] ${tenantName} minta upgrade ke ${planName}`,
-    text: `${tenantName} mengajukan upgrade ke paket ${planName}.\n\nDiajukan oleh: ${requesterName} <${requesterEmail}>${note ? `\nCatatan: ${note}` : ''}\n\nTinjau: ${reviewUrl}`,
-    html: emailShell({ preheader: `${tenantName} mengajukan upgrade ke paket ${planName}.`, eyebrow: 'Billing', bodyHtml, signature }),
-  });
-}
-
-/**
- * Beritahu tenant yang mengajukan bahwa permintaan upgrade-nya sudah
- * diputuskan (disetujui/ditolak) admin platform.
+ * Beritahu tenant bahwa pembayaran upgrade paketnya sudah dikonfirmasi lunas
+ * oleh Pakasir (lihat billingController.handlePakasirWebhook) dan paketnya
+ * sudah aktif. `approved`/`adminNote` dipertahankan di parameter untuk
+ * kompatibilitas isi surel (dulu juga dipakai untuk penolakan admin di alur
+ * verifikasi manual) — pemanggil saat ini SELALU mengirim `approved: true`,
+ * karena hanya pembayaran yang berhasil yang memanggil fungsi ini.
  */
 async function sendUpgradeRequestResolved({ to, planName, approved, adminNote, tenantId }) {
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -625,9 +584,9 @@ async function sendPlanExpiredNotice({ to, previousPlanName, tenantId }) {
 
 /**
  * Kirim isi form "Hubungi Kami" di landing page (saran/kritik, ajak kerja
- * sama) ke admin platform. `to` boleh diisi beberapa alamat dipisah koma,
- * sama seperti sendUpgradeRequestNotification. `email` di sini adalah surel
- * BALASAN PENGIRIM (dipasang sebagai `replyTo`) — bukan penerima.
+ * sama) ke admin platform. `to` boleh diisi beberapa alamat dipisah koma —
+ * nodemailer menerimanya langsung. `email` di sini adalah surel BALASAN
+ * PENGIRIM (dipasang sebagai `replyTo`) — bukan penerima.
  */
 async function sendContactMessage({ to, name, email, category, message }) {
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -665,6 +624,6 @@ async function sendContactMessage({ to, name, email, category, message }) {
 
 module.exports = {
   sendEmailChangeOtp, sendPasswordResetOtp, sendSignupVerificationOtp, sendNewUserWelcome, sendNotificationDigest,
-  sendUpgradeRequestNotification, sendUpgradeRequestResolved, sendPlanExpiredNotice,
+  sendUpgradeRequestResolved, sendPlanExpiredNotice,
   sendContactMessage, sendTenantWelcome,
 };

@@ -1,13 +1,12 @@
 const pool = require('../config/db');
 const { getPlan } = require('../config/plans');
-const { getPaymentGateway } = require('./paymentGateway');
 
 /**
  * ============================================================================
  *  LAYANAN LANGGANAN — satu-satunya tempat yang boleh menulis ke
  *  subscriptions / invoices / tenants.plan sekaligus.
  * ============================================================================
- *  billingController (resolveUpgradeRequest) & platformController
+ *  billingController (handlePakasirWebhook) & platformController
  *  (updateTenantPlan) WAJIB lewat sini, TIDAK BOLEH `UPDATE tenants SET
  *  plan = ...` langsung — supaya tenants.plan/plan_expires_at/billing_cycle
  *  (cache "state terkini", dibaca planLimits.js/dashboard/dll) tidak pernah
@@ -38,29 +37,37 @@ async function nextInvoiceNumber() {
 }
 
 /**
- * Aktivasi langganan — dipanggil begitu admin platform MENYETUJUI permintaan
- * upgrade (transfer sudah diverifikasi), atau begitu admin platform
- * mengoreksi paket tenant secara manual.
+ * Aktivasi langganan — dipanggil begitu pembayaran paket berbayar
+ * DIKONFIRMASI LUNAS oleh webhook Pakasir (lihat billingController.
+ * handlePakasirWebhook), begitu tenant memindahkan ke paket TANPA biaya
+ * (Free, tidak butuh pembayaran), atau begitu admin platform mengoreksi
+ * paket tenant secara manual (recordManualCorrection, fungsi TERPISAH dari
+ * ini).
+ *
+ * Fungsi ini MURNI PEMBUKUAN — TIDAK PERNAH menghubungi payment gateway
+ * sendiri. Pemanggil bertanggung jawab memastikan uangnya SUDAH diterima
+ * (untuk paket berbayar) SEBELUM memanggil ini; kalau belum ada pembayaran
+ * sungguhan, `providerTransactionId` cukup dibiarkan null (dipakai paket
+ * Free/koreksi admin).
  *
  *  1. Tutup subscription aktif/trialing lama tenant ini (kalau ada).
  *  2. Buat baris subscriptions baru — harga di-snapshot SEKARANG (dari
  *     `priceOverride` kalau dioper, atau dari config/plans.js SAAT INI kalau
  *     tidak) — bukan dihitung ulang lagi nanti kalau katalog berubah.
- *  3. Buat invoice 'paid' untuk paket berbayar lewat provider pembayaran
- *     aktif (lihat services/paymentGateway) — TIDAK ada invoice untuk Free
- *     (Free tidak pernah butuh subscription payment).
+ *  3. Buat invoice 'paid' untuk paket berbayar — TIDAK ada invoice untuk
+ *     Free (Free tidak pernah butuh subscription payment).
  *  4. Sinkronkan cache tenants.plan/plan_expires_at/billing_cycle.
  *
- *  `priceOverride` — dipakai billingController.resolveUpgradeRequest supaya
- *  tenant ditagih harga yang dia lihat SAAT MENGAJUKAN (snapshot di
- *  plan_upgrade_requests.price), bukan harga katalog saat admin baru sempat
- *  menyetujui — katalog sekarang bisa diubah instan lewat menu Katalog
- *  Paket, jadi keduanya bisa berbeda kalau harga sempat diubah selagi
- *  permintaan menunggu. `null`/`undefined` (bawaan) berarti "pakai harga
- *  katalog saat ini" — perilaku lama, dipakai authController (signup Free)
- *  dan permintaan lama dari sebelum kolom price ada di plan_upgrade_requests.
+ *  `priceOverride` — dipakai billingController.handlePakasirWebhook supaya
+ *  tenant ditagih harga yang dia lihat SAAT MENGAJUKAN CHECKOUT (snapshot di
+ *  plan_upgrade_requests.price), bukan harga katalog saat webhook baru
+ *  sampai — katalog sekarang bisa diubah instan lewat menu Katalog Paket,
+ *  jadi keduanya bisa berbeda kalau harga sempat diubah selagi tenant belum
+ *  menyelesaikan pembayaran. `null`/`undefined` (bawaan) berarti "pakai
+ *  harga katalog saat ini" — dipakai authController (signup Free) dan
+ *  permintaan lama dari sebelum kolom price ada di plan_upgrade_requests.
  */
-async function activateSubscription({ tenantId, planId, billingCycle = 'monthly', createdBy = null, provider = 'manual', priceOverride = null }) {
+async function activateSubscription({ tenantId, planId, billingCycle = 'monthly', createdBy = null, provider = 'system', priceOverride = null, providerTransactionId = null }) {
   const plan = getPlan(planId);
   if (!plan) throw new Error(`Paket "${planId}" tidak dikenal.`);
 
@@ -84,14 +91,12 @@ async function activateSubscription({ tenantId, planId, billingCycle = 'monthly'
 
   let invoice = null;
   if (price > 0) {
-    const gateway = getPaymentGateway(provider);
     const invoiceNumber = await nextInvoiceNumber();
-    await gateway.createCheckout({ invoiceNumber, amount: price, currency: 'IDR' });
     const [invResult] = await pool.query(
-      `INSERT INTO invoices (tenant_id, subscription_id, invoice_number, amount, currency, status, payment_method, paid_at, due_at, provider)
-       VALUES (:tenantId, :subscriptionId, :invoiceNumber, :amount, 'IDR', 'paid', 'bank_transfer', NOW(), NOW(), :provider)
+      `INSERT INTO invoices (tenant_id, subscription_id, invoice_number, amount, currency, status, payment_method, paid_at, due_at, provider, provider_transaction_id)
+       VALUES (:tenantId, :subscriptionId, :invoiceNumber, :amount, 'IDR', 'paid', :provider, NOW(), NOW(), :provider, :providerTransactionId)
        RETURNING id`,
-      { tenantId, subscriptionId, invoiceNumber, amount: price, provider }
+      { tenantId, subscriptionId, invoiceNumber, amount: price, provider, providerTransactionId }
     );
     invoice = { id: invResult.insertId, invoiceNumber, amount: price };
   }

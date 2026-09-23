@@ -52,8 +52,8 @@ export default function TermsOfServicePage() {
         <Section title="3. Paket Langganan & Pembayaran">
           <ul className="list-disc pl-5 space-y-1.5">
             <li>Paket Free tersedia tanpa batas waktu, tunduk pada batas pemakaian (jumlah aset/pengguna/lokasi) yang berlaku saat itu.</li>
-            <li>Paket berbayar diaktifkan setelah pembayaran (transfer manual) diverifikasi oleh tim kami — proses ini memerlukan waktu, bukan otomatis seketika.</li>
-            <li>Harga paket dapat berubah sewaktu-waktu; perubahan harga tidak berlaku surut untuk pengajuan upgrade yang sudah Anda ajukan sebelum perubahan itu berlaku.</li>
+            <li>Paket berbayar diaktifkan otomatis begitu pembayaran melalui mitra payment gateway kami (Pakasir) dikonfirmasi lunas.</li>
+            <li>Harga paket dapat berubah sewaktu-waktu; perubahan harga tidak berlaku surut untuk checkout yang sudah Anda buat sebelum perubahan itu berlaku.</li>
             <li>Anda dapat membatalkan langganan kapan saja lewat menu Langganan — akses ke fitur paket tetap berlaku sampai akhir periode yang sudah dibayar, tidak ada pengembalian dana pro-rata untuk sisa periode berjalan kecuali disebutkan lain secara tertulis.</li>
             <li>Menurunkan paket (downgrade) tidak menghapus data yang sudah ada, tapi menahan penambahan data baru selama pemakaian Anda masih di atas batas paket baru.</li>
           </ul>

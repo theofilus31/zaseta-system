@@ -76,7 +76,7 @@ async function adminRoleId() {
 
 /**
  * Satu user sungguhan untuk test yang butuh baris `users` NYATA (bukan
- * cuma `mockReq({ userId: 1 })`) — mis. billingController.createUpgradeRequest
+ * cuma `mockReq({ userId: 1 })`) — mis. billingController.requestPlanChange
  * INSERT ke plan_upgrade_requests.requested_by, kolom NOT NULL + FK ke
  * users(id). `userId: 1` di mockReq() cuma aman selama database dev lokal
  * kebetulan masih punya user id=1 dari testing manual sebelumnya — di

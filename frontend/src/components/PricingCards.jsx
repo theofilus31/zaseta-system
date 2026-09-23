@@ -20,7 +20,7 @@ import { SegmentedControl } from './ui/Button.jsx';
  * warnanya tetap token Zaseta sendiri (brand/ink), bukan token referensinya.
  *
  * Sakelar Bulanan/Tahunan pakai SegmentedControl yang sudah ada (dipakai juga
- * di PlatformBillingRequests) bukan komponen baru — priceYearly memang benar
+ * di BillingPage.jsx) bukan komponen baru — priceYearly memang benar
  * ada sekarang di config/plans.js (konvensi "2 bulan gratis"), jadi tidak lagi
  * cuma tampilan kosong seperti keputusan sebelumnya. Paket yang dipilih lewat
  * tombol "Berlangganan" membawa siklusnya lewat ?cycle= sampai ke Signup.jsx
@@ -241,7 +241,7 @@ export default function PricingCards({ className = '' }) {
         </>
       )}
       <p className="mt-8 text-center text-xs text-ink-400">
-        Semua harga sudah termasuk PPN. Belum ada checkout otomatis — aktivasi paket berbayar lewat verifikasi transfer manual.
+        Semua harga sudah termasuk PPN. Paket berbayar aktif otomatis begitu pembayaran Anda dikonfirmasi.
       </p>
     </div>
   );

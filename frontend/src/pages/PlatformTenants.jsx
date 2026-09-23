@@ -20,8 +20,8 @@ import { SearchInput, SearchableSelect, DateField, TextField, FormError } from '
  *   - Tangguhkan/Aktifkan: mengubah tenants.status — SEMUA pengguna tenant
  *     itu langsung kehilangan/mendapat kembali akses (lihat middleware/auth.js).
  *   - Ubah Paket: koreksi manual DI LUAR alur pengajuan upgrade biasa (lihat
- *     BillingPage.jsx/PlatformBillingRequests.jsx) — dipakai untuk perbaikan
- *     data atau kesepakatan khusus, bukan jalur transfer-manual normal.
+ *     BillingPage.jsx, dibayar lewat Pakasir) — dipakai untuk perbaikan
+ *     data atau kesepakatan khusus, bukan jalur pembayaran normal.
  * ============================================================================
  */
 
