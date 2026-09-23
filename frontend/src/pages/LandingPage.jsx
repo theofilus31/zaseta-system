@@ -338,26 +338,30 @@ function DashboardMockup() {
   );
 }
 
-/* Posisi tiap ikon dipilih supaya AMAN dari dua batasan sekaligus:
-   1. Tidak menabrak gembok pusat (lingkaran ~64px, kira-kira menempati x
-      antara -34..+30 dari titik asal) -- ikon yang berbagi baris vertikal
-      yang sama dengan gembok (top mendekati -34..+30) WAJIB berjarak jauh
-      ke kiri (left sangat negatif) supaya tidak tertindih olehnya.
-   2. Tidak menabrak teks "Data terkunci..." di kolom kiri -- kolom kiri &
-      kanan dipisahkan celah TETAP (gap-14 = 56px) begitu lebar layar >= lg
-      (tidak ikut melebar lagi di layar lebih lebar karena container
-      dibatasi max-w-6xl), jadi `left` tidak boleh sangat negatif KALAU
-      posisi vertikalnya (top) kebetulan sebaris dengan teks itu.
-   Kedua batasan itu SALING BERTABRAKAN kalau top-nya sebaris dengan
-   gembok (lihat riwayat commit -- video sempat ditaruh di situ). Solusinya:
-   susun 3 ikon berjenjang ke BAWAH gembok (bukan sejajar/di sampingnya),
-   supaya masing-masing bebas menjauh ke kiri tanpa menabrak gembok, DAN
-   baris tempat teks itu berada dilewati sama sekali (tidak ada ikon yang
-   sebaris dengannya). */
+/* Posisi tiap ikon dipilih supaya AMAN dari TIGA batasan sekaligus (dua yang
+   pertama sempat saling bertabrakan & ketahuan lewat riwayat commit -- lihat
+   catatan lama di situ kalau perlu jejaknya):
+   1. Tidak menabrak gembok pusat (lingkaran ~64px, menempati y antara
+      -34..+30 dari titik asal) -- ikon yang top-nya sebaris dengan itu WAJIB
+      berjarak jauh ke kiri (left sangat negatif) supaya tidak tertindih.
+   2. Tidak menabrak teks "Data terkunci..." di kolom kiri -- top-nya sebaris
+      persis dengan titik asal (kira-kira -18..-2), jadi `left` tidak boleh
+      sangat negatif KALAU posisi vertikalnya jatuh di rentang itu (kolom
+      kiri & kanan dipisahkan celah TETAP 56px sejak lebar layar >= lg,
+      tidak ikut melebar lagi di layar lebih lebar).
+   3. TIDAK BOLEH menembus section berikutnya ("Data tiap perusahaan
+      terisolasi penuh") -- section itu mulai tepat di bawah kartu mockup,
+      jadi HANYA ADA RUANG UNTUK SATU ikon berukuran 36px di bawah gembok
+      (dicek langsung: dua ikon bertumpuk di bawah gembok TIDAK PERNAH cukup
+      ruang, seberapa pun rapatnya, karena gembok sendiri sudah memakai
+      separuh anggaran vertikal yang tersisa sebelum batas section).
+   Solusinya: HANYA `box` yang ditaruh di bawah gembok; `laptop` & `video`
+   ditumpuk ke ATAS gembok (ruang di atas jauh lebih lega, sampai ke bagian
+   atas kartu mockup). */
 const ORBIT_ASSETS = [
   { icon: 'fa-laptop', bg: 'bg-info-600', left: -96, top: -78, float: 2.6 },
-  { icon: 'fa-video', bg: 'bg-accent-600', left: -70, top: 44, float: 3.1 },
-  { icon: 'fa-box', bg: 'bg-warning-600', left: -66, top: 96, float: 2.9 },
+  { icon: 'fa-video', bg: 'bg-accent-600', left: -70, top: -122, float: 3.1 },
+  { icon: 'fa-box', bg: 'bg-warning-600', left: -66, top: 36, float: 2.9 },
 ];
 
 /**
