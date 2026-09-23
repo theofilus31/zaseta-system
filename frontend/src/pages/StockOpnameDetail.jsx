@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axiosClient from '../api/axiosClient.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -11,6 +11,12 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import { SkeletonList } from '../components/ui/Skeleton.jsx';
 import { SearchInput, Checkbox, TextareaField } from '../components/ui/Form.jsx';
 import { OpnameProgressBar, ResultBadge, OPNAME_STATUS } from '../components/opname/OpnameBits.jsx';
+
+/* Dimuat lazy (bukan import biasa di atas) -- html5-qrcode berat (~110KB
+   gzip) dan cuma dibutuhkan kalau petugas benar-benar menekan tombol kamera
+   di kartu pindai, bukan berat yang wajar dipikul SETIAP pembukaan halaman
+   ini (apalagi halaman lain yang tidak menyentuh scanner sama sekali). */
+const QrScannerModal = lazy(() => import('../components/ui/QrScannerModal.jsx'));
 
 /**
  * ============================================================================
@@ -209,6 +215,18 @@ export default function StockOpnameDetail() {
 
 /* -------------------------------------------------------------------------- */
 
+/* Ditampilkan SEBENTAR saat berkas QrScannerModal (lazy) masih diunduh --
+   tanpa ini, jeda antara tombol kamera ditekan dan modal sungguhan muncul
+   terasa seperti ketukannya tidak terekam sama sekali, terutama di koneksi
+   lambat. */
+function ScannerLoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 backdrop-blur-sm">
+      <i className="fas fa-spinner fa-spin text-2xl text-white" aria-hidden="true" />
+    </div>
+  );
+}
+
 /**
  * Kotak pindai. Fokusnya dikembalikan sendiri setelah tiap pemindaian supaya
  * petugas bisa memindai berturut-turut tanpa menyentuh layar — dengan tangan
@@ -219,20 +237,26 @@ function ScanBox({ opnameId, onDone }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [recent, setRecent] = useState([]);
+  const [showScanner, setShowScanner] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  async function submit(e) {
-    e.preventDefault();
-    const nilai = code.trim();
+  /* Diambil terpisah dari handler form supaya bisa dipanggil LANGSUNG dengan
+     nilai hasil pindai kamera (lihat handleCameraDetected) -- kalau lewat
+     setCode() dulu baru submit, nilainya belum tentu ter-update saat submit
+     jalan (setState di React tidak seketika). */
+  async function submitValue(rawValue) {
+    const nilai = rawValue.trim();
     if (!nilai || busy) return;
 
     setBusy(true);
     try {
       /* Isi kotak URL juga diterima: petugas yang memindai pakai kamera ponsel
-         mendapat tautan lengkap /scan/<kode>, dan menyuruh mereka memotong
-         bagian depannya sendiri hanya menciptakan kesalahan ketik. */
+         (baik lewat pemindai QR bawaan HP di luar aplikasi ini, MAUPUN kamera
+         di dalam aplikasi ini sendiri lewat tombol di bawah) mendapat tautan
+         lengkap /scan/<kode>, dan menyuruh mereka memotong bagian depannya
+         sendiri hanya menciptakan kesalahan ketik. */
       const kode = nilai.includes('/scan/') ? nilai.split('/scan/').pop().split(/[?#]/)[0] : nilai;
 
       const res = await axiosClient.post(`/opnames/${opnameId}/scan`, { code: kode });
@@ -252,9 +276,24 @@ function ScanBox({ opnameId, onDone }) {
     }
   }
 
+  function handleSubmit(e) {
+    e.preventDefault();
+    submitValue(code);
+  }
+
+  /* Begitu kamera menemukan kode, langsung diproses (tanpa menunggu petugas
+     menekan "Tandai" lagi) -- sama seperti pemindai barcode genggam yang
+     "menembak" lalu Enter otomatis, cuma sumbernya kamera di dalam aplikasi
+     ini sendiri. Modalnya juga langsung ditutup supaya petugas langsung
+     melihat hasilnya di kartu ini, bukan tetap di layar kamera. */
+  function handleCameraDetected(text) {
+    setShowScanner(false);
+    submitValue(text);
+  }
+
   return (
     <Card className="mb-5 border-info-200 bg-info-50/40">
-      <form onSubmit={submit}>
+      <form onSubmit={handleSubmit}>
         <label className="label" htmlFor="opname-scan">Pindai atau Ketik Kode Aset</label>
         <div className="flex gap-2">
           <input
@@ -267,17 +306,34 @@ function ScanBox({ opnameId, onDone }) {
                sebagai satu tembakan cepat, dan itu jalur utama halaman ini —
                terlalu berisiko dibiarkan bergantung pada perilaku bawaan
                peramban yang bisa berbeda antar perangkat. */
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(e); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitValue(code); } }}
             className="field flex-1"
             placeholder="Tembakkan pemindai ke label, atau tempel tautannya di sini"
             autoComplete="off"
           />
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={() => setShowScanner(true)}
+            title="Pindai lewat kamera"
+            aria-label="Pindai lewat kamera"
+          >
+            <i className="fas fa-camera" aria-hidden="true" />
+          </Button>
           <Button type="submit" loading={busy} disabled={!code.trim()}>Tandai</Button>
         </div>
         <p className="hint">
           Aset ditandai ditemukan otomatis. Kalau lokasinya berbeda dari catatan, hasilnya jadi “salah lokasi”.
+          Tanpa pemindai genggam? Ketuk ikon kamera untuk memindai lewat kamera HP.
         </p>
       </form>
+
+      {showScanner && (
+        <Suspense fallback={<ScannerLoadingOverlay />}>
+          <QrScannerModal onClose={() => setShowScanner(false)} onDetected={handleCameraDetected} />
+        </Suspense>
+      )}
 
       {recent.length > 0 && (
         <ul className="mt-4 space-y-1.5 border-t border-info-200/60 pt-3">
